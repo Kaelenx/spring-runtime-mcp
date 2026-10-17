@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "2",
+  "status": "ok",
+  "source": {
+    "targetId": "local",
+    "snapshotId": "fixture-snapshot",
+    "observedAt": "2026-10-16T00:00:00Z",
+    "endpointIds": [
+      "env"
+    ],
+    "bootVersion": null,
+    "adapterVersion": "fixture-1",
+    "policyVersion": "fixture-1"
+  },
+  "data": {
+    "activeProfiles": [
+      "dev"
+    ],
+    "items": [
+      {
+        "id": "item_1",
+        "endpointId": "env",
+        "observationId": "fixture_observation",
+        "contextId": null,
+        "parentContextId": null,
+        "propertyKey": "spring.application.name",
+        "prefix": "spring.application",
+        "configurationBean": null,
+        "effectiveValue": "orders",
+        "valueState": "visible",
+        "bindingValue": null,
+        "bindingState": "notReported",
+        "origin": {
+          "kind": "configurationFile",
+          "file": "application.yaml",
+          "line": 2,
+          "column": 9,
+          "environmentVariable": null
+        },
+        "sourceKind": "configurationFile",
+        "effective": "yes"
+      }
+    ]
+  },
+  "totalMatched": 1,
+  "truncated": false,
+  "truncationReasons": [],
+  "coverage": {
+    "state": "complete",
+    "scope": "contract_fixture",
+    "gaps": []
+  },
+  "warnings": [],
+  "redactions": [],
+  "nextCursor": null,
+  "nextAction": {
+    "kind": "done",
+    "reasonCode": "COMPLETE",
+    "filterSuggestions": []
+  },
+  "errors": []
+}

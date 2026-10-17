@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "2",
+  "status": "ok",
+  "source": {
+    "targetId": "local",
+    "snapshotId": "fixture-snapshot",
+    "observedAt": "2026-10-16T00:00:00Z",
+    "endpointIds": [
+      "beans",
+      "env"
+    ],
+    "bootVersion": null,
+    "adapterVersion": "fixture-1",
+    "policyVersion": "fixture-1"
+  },
+  "data": {
+    "missingInRuntime": [
+      {
+        "id": "diff_1",
+        "dimension": "beans",
+        "identity": "application:expectedService",
+        "contextId": "application",
+        "expected": "present",
+        "actual": "absent",
+        "evidenceLevel": "observed",
+        "affectedDependencyIds": []
+      }
+    ],
+    "unexpectedInRuntime": [],
+    "profileMismatch": {
+      "expected": [
+        "dev"
+      ],
+      "actual": [
+        "dev"
+      ],
+      "state": "match"
+    },
+    "rootCauseInferences": [
+      {
+        "code": "INSUFFICIENT_EVIDENCE",
+        "confidence": "unknown",
+        "evidenceIds": []
+      }
+    ]
+  },
+  "totalMatched": 1,
+  "truncated": false,
+  "truncationReasons": [],
+  "coverage": {
+    "state": "complete",
+    "scope": "contract_fixture",
+    "gaps": []
+  },
+  "warnings": [],
+  "redactions": [],
+  "nextCursor": null,
+  "nextAction": {
+    "kind": "done",
+    "reasonCode": "COMPLETE",
+    "filterSuggestions": []
+  },
+  "errors": []
+}

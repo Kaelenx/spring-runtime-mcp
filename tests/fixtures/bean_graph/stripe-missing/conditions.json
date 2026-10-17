@@ -1,0 +1,43 @@
+{
+  "contexts": {
+    "infrastructure": {
+      "positiveMatches": {},
+      "negativeMatches": {},
+      "unconditionalClasses": []
+    },
+    "application": {
+      "parentId": "infrastructure",
+      "positiveMatches": {
+        "example.FallbackConfiguration": [
+          {
+            "condition": "OnBeanCondition",
+            "message": "@ConditionalOnMissingBean (types: example.StripeClient; SearchStrategy: all) did not find any beans"
+          }
+        ]
+      },
+      "negativeMatches": {
+        "example.StripePaymentGateway": {
+          "matched": [],
+          "notMatched": [
+            {
+              "condition": "OnBeanCondition",
+              "message": "@ConditionalOnBean (types: example.StripeClient; SearchStrategy: all) did not find any beans of type example.StripeClient"
+            }
+          ]
+        },
+        "example.StripeConfiguration#stripeClient": {
+          "matched": [],
+          "notMatched": [
+            {
+              "condition": "OnPropertyCondition",
+              "message": "@ConditionalOnProperty (stripe.enabled=true) did not find property 'enabled'"
+            }
+          ]
+        }
+      },
+      "unconditionalClasses": [
+        "example.OrderConfiguration"
+      ]
+    }
+  }
+}

@@ -1,0 +1,34 @@
+[project]
+name = "spring-runtime-mcp"
+version = "0.1.0"
+description = "Read-only Spring Boot runtime diagnostics for local MCP clients."
+requires-python = ">=3.11"
+dependencies = ["jsonschema==4.25.1"]
+
+[project.scripts]
+spring-runtime-mcp = "spring_runtime_mcp.cli:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# These are deliberate boundaries, not defects:
+# BLE001: protocol and tool edges must turn unexpected failures into fixed envelopes.
+# FURB162: keep the explicit Z suffix so observation timestamps stay timezone-aware.
+# TRY004: invalid actuator shapes use ValueError domain codes caught as malformed evidence.
+# PLR0124: `value == value` rejects NaN without also rejecting other floats.
+ignore = ["BLE001", "FURB162", "TRY004", "PLR0124"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+mypy_path = "src"
+packages = ["spring_runtime_mcp"]
+
+[[tool.mypy.overrides]]
+module = ["jsonschema", "jsonschema.*"]
+ignore_missing_imports = true

@@ -1,0 +1,45 @@
+{
+  "springBootVersion": "2.7.18",
+  "timeline": {
+    "startTime": "2026-10-16T00:00:00Z",
+    "events": [
+      {
+        "startTime": "2026-10-16T00:00:00.000Z",
+        "endTime": "2026-10-16T00:00:00.900Z",
+        "duration": "PT0.9S",
+        "startupStep": {
+          "id": 1,
+          "name": "spring.boot.application.starting",
+          "tags": []
+        }
+      },
+      {
+        "startTime": "2026-10-16T00:00:00.100Z",
+        "endTime": "2026-10-16T00:00:00.800Z",
+        "duration": "PT0.7S",
+        "startupStep": {
+          "id": 2,
+          "name": "spring.beans.instantiate",
+          "tags": [
+            {
+              "key": "beanName",
+              "value": "orderService"
+            }
+          ],
+          "parentId": 1
+        }
+      },
+      {
+        "startTime": "2026-10-16T00:00:00.200Z",
+        "endTime": "2026-10-16T00:00:00.400Z",
+        "duration": "PT0.2S",
+        "startupStep": {
+          "id": 3,
+          "name": "spring.context.base-packages.scan",
+          "tags": [],
+          "parentId": 2
+        }
+      }
+    ]
+  }
+}

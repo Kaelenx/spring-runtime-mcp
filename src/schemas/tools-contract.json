@@ -1,0 +1,1902 @@
+{
+  "contractVersion": "2",
+  "protocolVersion": "2026-07-28",
+  "tools": [
+    {
+      "name": "springboot_analyze_startup",
+      "description": "返回非破坏性启动快照中的版本、时间线跨度、最慢步骤及父子链；排查慢启动时调用，不用于当前请求延迟，也不执行排空缓冲区的 POST。",
+      "annotations": {"title": "启动瓶颈诊断","readOnlyHint": true,"destructiveHint": false,"idempotentHint": true,"openWorldHint": false},
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "targetId": {"type": "string","minLength": 1,"maxLength": 64,"pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])","default": "local"},
+          "maxResults": {"type": "integer","minimum": 1,"maximum": 50,"default": 50},
+          "cursor": {"type": "string","maxLength": 2048,"minLength": 1},
+          "stepNamePattern": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.$/{}:*?+@! -]+$(?![\\s\\S])",
+            "description": "Bounded case-sensitive glob: only * and ? are wildcards; all other allowed characters are literal. No regex."
+          },
+          "beanNamePattern": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.$/{}:*?+@! -]+$(?![\\s\\S])",
+            "description": "Bounded case-sensitive glob: only * and ? are wildcards; all other allowed characters are literal. No regex."
+          },
+          "minDurationMs": {"type": "number","minimum": 0,"default": 0},
+          "maxDepth": {"type": "integer","minimum": 0,"maximum": 16,"default": 4}
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "schemaVersion": {"const": "2"},
+          "status": {"enum": ["ok","partial","denied","unavailable","invalid","too_large"]},
+          "source": {
+            "type": "object",
+            "properties": {
+              "targetId": {"type": "string","maxLength": 64},
+              "snapshotId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]},
+              "observedAt": {"type": "string","format": "date-time"},
+              "endpointIds": {
+                "type": "array",
+                "items": {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                "maxItems": 14,
+                "uniqueItems": true
+              },
+              "bootVersion": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+              "adapterVersion": {"type": "string","maxLength": 32},
+              "policyVersion": {"type": "string","maxLength": 32}
+            },
+            "required": ["targetId","snapshotId","observedAt","endpointIds","bootVersion","adapterVersion","policyVersion"],
+            "additionalProperties": false
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "springBootVersion": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+                  "totalDurationMs": {"anyOf": [{"type": "number","minimum": 0},{"type": "null"}]},
+                  "durationBasis": {"enum": ["timelineSpan","unknown"]},
+                  "timelineComplete": {"type": "boolean"},
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {"type": "string","maxLength": 96},
+                        "endpointId": {"enum": ["startup"]},
+                        "observationId": {"type": "string","maxLength": 96},
+                        "stepId": {"type": "string","pattern": "^[0-9]+$(?![\\s\\S])","maxLength": 20},
+                        "parentStepId": {"anyOf": [{"type": "string","pattern": "^[0-9]+$(?![\\s\\S])","maxLength": 20},{"type": "null"}]},
+                        "name": {"type": "string","maxLength": 256},
+                        "startedAt": {"anyOf": [{"type": "string","format": "date-time"},{"type": "null"}]},
+                        "durationNanos": {"anyOf": [{"type": "string","pattern": "^[0-9]+$(?![\\s\\S])","maxLength": 30},{"type": "null"}]},
+                        "durationMs": {"anyOf": [{"type": "number","minimum": 0},{"type": "null"}]},
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {"key": {"type": "string","maxLength": 128},"value": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]}},
+                            "required": ["key","value"],
+                            "additionalProperties": false
+                          },
+                          "maxItems": 10
+                        },
+                        "ancestorIds": {"type": "array","items": {"type": "string","maxLength": 20},"maxItems": 16},
+                        "relationState": {"enum": ["resolved","orphan","cycle","duplicate"]},
+                        "bottleneckCode": {"enum": ["BEAN_INSTANTIATION","PACKAGE_SCAN","AUTO_CONFIGURATION","OTHER","UNKNOWN"]}
+                      },
+                      "required": ["id","endpointId","observationId","stepId","parentStepId","name","startedAt","durationNanos","durationMs","tags","ancestorIds","relationState","bottleneckCode"],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 50
+                  }
+                },
+                "required": ["springBootVersion","totalDurationMs","durationBasis","timelineComplete","items"],
+                "additionalProperties": false
+              },
+              {"type": "null"}
+            ]
+          },
+          "totalMatched": {"anyOf": [{"type": "integer","minimum": 0},{"type": "null"}]},
+          "truncated": {"type": "boolean"},
+          "truncationReasons": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 8},
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "state": {"enum": ["complete","partial","unavailable"]},
+              "scope": {"type": "string","maxLength": 256},
+              "gaps": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 10}
+            },
+            "required": ["state","scope","gaps"],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {"code": {"type": "string","maxLength": 64},"recordId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]}},
+              "required": ["code","recordId"],
+              "additionalProperties": false
+            },
+            "maxItems": 10
+          },
+          "redactions": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 50},
+          "nextCursor": {"anyOf": [{"type": "string","maxLength": 2048},{"type": "null"}]},
+          "nextAction": {
+            "type": "object",
+            "properties": {
+              "kind": {"enum": ["done","refine","page","remediate"]},
+              "reasonCode": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "filterSuggestions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "parameter": {"type": "string","maxLength": 64},
+                    "value": {"anyOf": [{"type": ["string","number","boolean","null"],"maxLength": 512},{"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 10}]}
+                  },
+                  "required": ["parameter","value"],
+                  "additionalProperties": false
+                },
+                "maxItems": 4
+              }
+            },
+            "required": ["kind","reasonCode","filterSuggestions"],
+            "additionalProperties": false
+          },
+          "errors": {"type": "array","items": {"$ref": "#/$defs/DiagnosticError"},"maxItems": 8}
+        },
+        "required": ["schemaVersion","status","source","data","totalMatched","truncated","truncationReasons","coverage","warnings","redactions","nextCursor","nextAction","errors"],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {"properties": {"status": {"enum": ["denied","unavailable","invalid","too_large"]}},"required": ["status"]},
+            "then": {
+              "properties": {"data": {"type": "null"},"totalMatched": {"type": "null"},"nextCursor": {"type": "null"},"errors": {"minItems": 1},"coverage": {"properties": {"state": {"const": "unavailable"}}}}
+            }
+          },
+          {
+            "if": {"properties": {"status": {"const": "ok"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"errors": {"maxItems": 0},"coverage": {"properties": {"state": {"const": "complete"}}}}}
+          },
+          {
+            "if": {"properties": {"status": {"const": "partial"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"coverage": {"properties": {"state": {"const": "partial"}}}}}
+          }
+        ],
+        "$defs": {
+          "DiagnosticError": {
+            "type": "object",
+            "properties": {
+              "code": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "endpointId": {
+                "anyOf": [
+                  {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                  {"type": "null"}
+                ]
+              },
+              "httpStatus": {"anyOf": [{"type": "integer","minimum": 100,"maximum": 599},{"type": "null"}]},
+              "retryable": {"type": "boolean"},
+              "message": {"type": "string","maxLength": 256,"description": "Local static template only; never upstream text."},
+              "remediation": {
+                "type": "object",
+                "properties": {
+                  "recipeId": {"type": "string","maxLength": 96},
+                  "action": {"enum": ["refineQuery","configureCapability","reviewExposure","reviewAuthorization","configureStartup","reviewTarget","reviewSource","stop"]},
+                  "configKeys": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 8},
+                  "steps": {"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 4},
+                  "requiresApproval": {"type": "boolean"},
+                  "retryAfterMs": {"anyOf": [{"type": "integer","minimum": 0,"maximum": 5000},{"type": "null"}]}
+                },
+                "required": ["recipeId","action","configKeys","steps","requiresApproval","retryAfterMs"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["code","endpointId","httpStatus","retryable","message","remediation"],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "name": "springboot_check_migrations",
+      "description": "返回所有容器和迁移 Bean 的已报告迁移、校验和、顺序及异常状态；排查迁移失败或版本差异时调用，未报告的待执行状态需要可信预期，且不会执行 SQL 或迁移。",
+      "annotations": {"title": "数据库迁移审计","readOnlyHint": true,"destructiveHint": false,"idempotentHint": true,"openWorldHint": false},
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "targetId": {"type": "string","minLength": 1,"maxLength": 64,"pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])","default": "local"},
+          "maxResults": {"type": "integer","minimum": 1,"maximum": 50,"default": 50},
+          "cursor": {"type": "string","maxLength": 2048,"minLength": 1},
+          "engine": {"enum": ["auto","flyway","liquibase"],"default": "auto"},
+          "contextId": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+          "migrationBean": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+          "state": {"type": "array","items": {"enum": ["APPLIED","PENDING","FAILED","OUT_OF_ORDER","MISSING_FAILED","UNKNOWN"]},"maxItems": 6,"uniqueItems": true},
+          "version": {"type": "string","maxLength": 128},
+          "expectedMigrations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "engine": {"enum": ["flyway","liquibase"]},
+                "contextId": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+                "migrationBean": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+                "identity": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+                "version": {"anyOf": [{"type": "string","maxLength": 128},{"type": "null"}]},
+                "checksum": {"anyOf": [{"type": "string","maxLength": 128},{"type": "null"}]}
+              },
+              "required": ["engine","contextId","migrationBean","identity"],
+              "additionalProperties": false
+            },
+            "maxItems": 100
+          },
+          "expectedSetComplete": {"type": "boolean","default": false}
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "schemaVersion": {"const": "2"},
+          "status": {"enum": ["ok","partial","denied","unavailable","invalid","too_large"]},
+          "source": {
+            "type": "object",
+            "properties": {
+              "targetId": {"type": "string","maxLength": 64},
+              "snapshotId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]},
+              "observedAt": {"type": "string","format": "date-time"},
+              "endpointIds": {
+                "type": "array",
+                "items": {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                "maxItems": 14,
+                "uniqueItems": true
+              },
+              "bootVersion": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+              "adapterVersion": {"type": "string","maxLength": 32},
+              "policyVersion": {"type": "string","maxLength": 32}
+            },
+            "required": ["targetId","snapshotId","observedAt","endpointIds","bootVersion","adapterVersion","policyVersion"],
+            "additionalProperties": false
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "pendingVisibility": {"enum": ["reported","baselineInferred","unknown"]},
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {"type": "string","maxLength": 96},
+                        "endpointId": {"enum": ["flyway","liquibase"]},
+                        "observationId": {"type": "string","maxLength": 96},
+                        "contextId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "parentContextId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "engine": {"enum": ["flyway","liquibase"]},
+                        "migrationBean": {"type": "string","maxLength": 256},
+                        "identity": {"type": "string","maxLength": 256},
+                        "script": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "changeLog": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "changeSetId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "author": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "version": {"anyOf": [{"type": "string","maxLength": 128},{"type": "null"}]},
+                        "description": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "checksum": {"anyOf": [{"type": "string","maxLength": 128},{"type": "null"}]},
+                        "checksumType": {"enum": ["number","string","absent"]},
+                        "checksumAlgorithm": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+                        "executionTimeMs": {"anyOf": [{"type": "number","minimum": 0},{"type": "null"}]},
+                        "orderExecuted": {"anyOf": [{"type": "integer","minimum": 0},{"type": "null"}]},
+                        "executedAt": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+                        "rawState": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+                        "state": {"enum": ["APPLIED","PENDING","FAILED","OUT_OF_ORDER","MISSING_FAILED","UNKNOWN"]},
+                        "stateEvidence": {"enum": ["reported","baselineInferred","unknown"]},
+                        "attentionRequired": {"type": "boolean"}
+                      },
+                      "required": [
+                        "id",
+                        "endpointId",
+                        "observationId",
+                        "contextId",
+                        "parentContextId",
+                        "engine",
+                        "migrationBean",
+                        "identity",
+                        "script",
+                        "changeLog",
+                        "changeSetId",
+                        "author",
+                        "version",
+                        "description",
+                        "checksum",
+                        "checksumType",
+                        "checksumAlgorithm",
+                        "executionTimeMs",
+                        "orderExecuted",
+                        "executedAt",
+                        "rawState",
+                        "state",
+                        "stateEvidence",
+                        "attentionRequired"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 50
+                  }
+                },
+                "required": ["pendingVisibility","items"],
+                "additionalProperties": false
+              },
+              {"type": "null"}
+            ]
+          },
+          "totalMatched": {"anyOf": [{"type": "integer","minimum": 0},{"type": "null"}]},
+          "truncated": {"type": "boolean"},
+          "truncationReasons": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 8},
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "state": {"enum": ["complete","partial","unavailable"]},
+              "scope": {"type": "string","maxLength": 256},
+              "gaps": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 10}
+            },
+            "required": ["state","scope","gaps"],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {"code": {"type": "string","maxLength": 64},"recordId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]}},
+              "required": ["code","recordId"],
+              "additionalProperties": false
+            },
+            "maxItems": 10
+          },
+          "redactions": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 50},
+          "nextCursor": {"anyOf": [{"type": "string","maxLength": 2048},{"type": "null"}]},
+          "nextAction": {
+            "type": "object",
+            "properties": {
+              "kind": {"enum": ["done","refine","page","remediate"]},
+              "reasonCode": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "filterSuggestions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "parameter": {"type": "string","maxLength": 64},
+                    "value": {"anyOf": [{"type": ["string","number","boolean","null"],"maxLength": 512},{"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 10}]}
+                  },
+                  "required": ["parameter","value"],
+                  "additionalProperties": false
+                },
+                "maxItems": 4
+              }
+            },
+            "required": ["kind","reasonCode","filterSuggestions"],
+            "additionalProperties": false
+          },
+          "errors": {"type": "array","items": {"$ref": "#/$defs/DiagnosticError"},"maxItems": 8}
+        },
+        "required": ["schemaVersion","status","source","data","totalMatched","truncated","truncationReasons","coverage","warnings","redactions","nextCursor","nextAction","errors"],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {"properties": {"status": {"enum": ["denied","unavailable","invalid","too_large"]}},"required": ["status"]},
+            "then": {
+              "properties": {"data": {"type": "null"},"totalMatched": {"type": "null"},"nextCursor": {"type": "null"},"errors": {"minItems": 1},"coverage": {"properties": {"state": {"const": "unavailable"}}}}
+            }
+          },
+          {
+            "if": {"properties": {"status": {"const": "ok"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"errors": {"maxItems": 0},"coverage": {"properties": {"state": {"const": "complete"}}}}}
+          },
+          {
+            "if": {"properties": {"status": {"const": "partial"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"coverage": {"properties": {"state": {"const": "partial"}}}}}
+          }
+        ],
+        "$defs": {
+          "DiagnosticError": {
+            "type": "object",
+            "properties": {
+              "code": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "endpointId": {
+                "anyOf": [
+                  {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                  {"type": "null"}
+                ]
+              },
+              "httpStatus": {"anyOf": [{"type": "integer","minimum": 100,"maximum": 599},{"type": "null"}]},
+              "retryable": {"type": "boolean"},
+              "message": {"type": "string","maxLength": 256,"description": "Local static template only; never upstream text."},
+              "remediation": {
+                "type": "object",
+                "properties": {
+                  "recipeId": {"type": "string","maxLength": 96},
+                  "action": {"enum": ["refineQuery","configureCapability","reviewExposure","reviewAuthorization","configureStartup","reviewTarget","reviewSource","stop"]},
+                  "configKeys": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 8},
+                  "steps": {"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 4},
+                  "requiresApproval": {"type": "boolean"},
+                  "retryAfterMs": {"anyOf": [{"type": "integer","minimum": 0,"maximum": 5000},{"type": "null"}]}
+                },
+                "required": ["recipeId","action","configKeys","steps","requiresApproval","retryAfterMs"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["code","endpointId","httpStatus","retryable","message","remediation"],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "name": "springboot_detect_drift",
+      "description": "比较调用者从获权工作区提取的 Bean、路由、迁移版本和 Profile 预期，返回差异及分级根因候选；源码与运行行为不一致时调用，省略维度不参与比较，文件时间本身不能证明未重启。",
+      "annotations": {"title": "源码与运行态漂移诊断","readOnlyHint": true,"destructiveHint": false,"idempotentHint": true,"openWorldHint": false},
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "targetId": {"type": "string","minLength": 1,"maxLength": 64,"pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])","default": "local"},
+          "maxResults": {"type": "integer","minimum": 1,"maximum": 50,"default": 50},
+          "cursor": {"type": "string","maxLength": 2048,"minLength": 1},
+          "expectedBeans": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+                "type": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+                "contextId": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+                "aliases": {"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 10}
+              },
+              "required": [],
+              "additionalProperties": false,
+              "anyOf": [{"required": ["name"]},{"required": ["type"]}]
+            },
+            "maxItems": 100
+          },
+          "expectedRoutes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {"type": "string","minLength": 1,"maxLength": 1024,"pattern": "^/[^\\u0000-\\u001f\\u007f?#]*$(?![\\s\\S])"},
+                "httpMethod": {"enum": ["GET","HEAD","POST","PUT","PATCH","DELETE","OPTIONS","TRACE","CONNECT"]},
+                "controllerClass": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+                "contextId": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"}
+              },
+              "required": ["path","httpMethod"],
+              "additionalProperties": false
+            },
+            "maxItems": 100
+          },
+          "expectedMigrationVersion": {
+            "type": "object",
+            "properties": {
+              "engine": {"enum": ["flyway","liquibase"]},
+              "version": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+              "contextId": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+              "migrationBean": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"}
+            },
+            "required": ["engine","version"],
+            "additionalProperties": false
+          },
+          "expectedProfiles": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 20,"uniqueItems": true},
+          "expectedScopeComplete": {"type": "boolean","default": false},
+          "sourceRevision": {"type": "string","maxLength": 128},
+          "sourceModifiedAt": {"type": "string","format": "date-time"},
+          "maxDepth": {"type": "integer","minimum": 0,"maximum": 16,"default": 2}
+        },
+        "required": [],
+        "additionalProperties": false,
+        "allOf": [{"anyOf": [{"required": ["expectedBeans"]},{"required": ["expectedRoutes"]},{"required": ["expectedMigrationVersion"]},{"required": ["expectedProfiles"]}]}]
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "schemaVersion": {"const": "2"},
+          "status": {"enum": ["ok","partial","denied","unavailable","invalid","too_large"]},
+          "source": {
+            "type": "object",
+            "properties": {
+              "targetId": {"type": "string","maxLength": 64},
+              "snapshotId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]},
+              "observedAt": {"type": "string","format": "date-time"},
+              "endpointIds": {
+                "type": "array",
+                "items": {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                "maxItems": 14,
+                "uniqueItems": true
+              },
+              "bootVersion": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+              "adapterVersion": {"type": "string","maxLength": 32},
+              "policyVersion": {"type": "string","maxLength": 32}
+            },
+            "required": ["targetId","snapshotId","observedAt","endpointIds","bootVersion","adapterVersion","policyVersion"],
+            "additionalProperties": false
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "missingInRuntime": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {"type": "string","maxLength": 96},
+                        "dimension": {"enum": ["beans","routes","migrations"]},
+                        "identity": {"type": "string","maxLength": 256},
+                        "contextId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "expected": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "actual": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "evidenceLevel": {"enum": ["observed","inferred","unknown"]},
+                        "affectedDependencyIds": {"type": "array","items": {"type": "string","maxLength": 96},"maxItems": 16}
+                      },
+                      "required": ["id","dimension","identity","contextId","expected","actual","evidenceLevel","affectedDependencyIds"],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 50
+                  },
+                  "unexpectedInRuntime": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {"type": "string","maxLength": 96},
+                        "dimension": {"enum": ["beans","routes","migrations"]},
+                        "identity": {"type": "string","maxLength": 256},
+                        "contextId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "expected": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "actual": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "evidenceLevel": {"enum": ["observed","inferred","unknown"]},
+                        "affectedDependencyIds": {"type": "array","items": {"type": "string","maxLength": 96},"maxItems": 16}
+                      },
+                      "required": ["id","dimension","identity","contextId","expected","actual","evidenceLevel","affectedDependencyIds"],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 50
+                  },
+                  "profileMismatch": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "expected": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 20},
+                          "actual": {"anyOf": [{"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 20},{"type": "null"}]},
+                          "state": {"enum": ["match","mismatch","unknown"]}
+                        },
+                        "required": ["expected","actual","state"],
+                        "additionalProperties": false
+                      },
+                      {"type": "null"}
+                    ]
+                  },
+                  "rootCauseInferences": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "code": {"enum": ["POSSIBLE_NOT_RESTARTED","PROFILE_MISMATCH","POSSIBLE_WRONG_INSTANCE","ENVIRONMENT_OVERRIDE","INSUFFICIENT_EVIDENCE"]},
+                        "confidence": {"enum": ["supported","candidate","unknown"]},
+                        "evidenceIds": {"type": "array","items": {"type": "string","maxLength": 96},"maxItems": 8}
+                      },
+                      "required": ["code","confidence","evidenceIds"],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 4
+                  }
+                },
+                "required": ["missingInRuntime","unexpectedInRuntime","profileMismatch","rootCauseInferences"],
+                "additionalProperties": false
+              },
+              {"type": "null"}
+            ]
+          },
+          "totalMatched": {"anyOf": [{"type": "integer","minimum": 0},{"type": "null"}]},
+          "truncated": {"type": "boolean"},
+          "truncationReasons": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 8},
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "state": {"enum": ["complete","partial","unavailable"]},
+              "scope": {"type": "string","maxLength": 256},
+              "gaps": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 10}
+            },
+            "required": ["state","scope","gaps"],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {"code": {"type": "string","maxLength": 64},"recordId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]}},
+              "required": ["code","recordId"],
+              "additionalProperties": false
+            },
+            "maxItems": 10
+          },
+          "redactions": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 50},
+          "nextCursor": {"anyOf": [{"type": "string","maxLength": 2048},{"type": "null"}]},
+          "nextAction": {
+            "type": "object",
+            "properties": {
+              "kind": {"enum": ["done","refine","page","remediate"]},
+              "reasonCode": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "filterSuggestions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "parameter": {"type": "string","maxLength": 64},
+                    "value": {"anyOf": [{"type": ["string","number","boolean","null"],"maxLength": 512},{"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 10}]}
+                  },
+                  "required": ["parameter","value"],
+                  "additionalProperties": false
+                },
+                "maxItems": 4
+              }
+            },
+            "required": ["kind","reasonCode","filterSuggestions"],
+            "additionalProperties": false
+          },
+          "errors": {"type": "array","items": {"$ref": "#/$defs/DiagnosticError"},"maxItems": 8}
+        },
+        "required": ["schemaVersion","status","source","data","totalMatched","truncated","truncationReasons","coverage","warnings","redactions","nextCursor","nextAction","errors"],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {"properties": {"status": {"enum": ["denied","unavailable","invalid","too_large"]}},"required": ["status"]},
+            "then": {
+              "properties": {"data": {"type": "null"},"totalMatched": {"type": "null"},"nextCursor": {"type": "null"},"errors": {"minItems": 1},"coverage": {"properties": {"state": {"const": "unavailable"}}}}
+            }
+          },
+          {
+            "if": {"properties": {"status": {"const": "ok"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"errors": {"maxItems": 0},"coverage": {"properties": {"state": {"const": "complete"}}}}}
+          },
+          {
+            "if": {"properties": {"status": {"const": "partial"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"coverage": {"properties": {"state": {"const": "partial"}}}}}
+          }
+        ],
+        "$defs": {
+          "DiagnosticError": {
+            "type": "object",
+            "properties": {
+              "code": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "endpointId": {
+                "anyOf": [
+                  {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                  {"type": "null"}
+                ]
+              },
+              "httpStatus": {"anyOf": [{"type": "integer","minimum": 100,"maximum": 599},{"type": "null"}]},
+              "retryable": {"type": "boolean"},
+              "message": {"type": "string","maxLength": 256,"description": "Local static template only; never upstream text."},
+              "remediation": {
+                "type": "object",
+                "properties": {
+                  "recipeId": {"type": "string","maxLength": 96},
+                  "action": {"enum": ["refineQuery","configureCapability","reviewExposure","reviewAuthorization","configureStartup","reviewTarget","reviewSource","stop"]},
+                  "configKeys": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 8},
+                  "steps": {"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 4},
+                  "requiresApproval": {"type": "boolean"},
+                  "retryAfterMs": {"anyOf": [{"type": "integer","minimum": 0,"maximum": 5000},{"type": "null"}]}
+                },
+                "required": ["recipeId","action","configKeys","steps","requiresApproval","retryAfterMs"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["code","endpointId","httpStatus","retryable","message","remediation"],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "name": "springboot_diagnose_health",
+      "description": "返回整体健康状态、异常组件树及已脱敏的结构化错误和修复代码；依赖故障或探针异常时调用，组件下钻在本地完成，不获取日志、堆转储或原始异常栈。",
+      "annotations": {"title": "应用与依赖健康诊断","readOnlyHint": true,"destructiveHint": false,"idempotentHint": true,"openWorldHint": false},
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "targetId": {"type": "string","minLength": 1,"maxLength": 64,"pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])","default": "local"},
+          "maxResults": {"type": "integer","minimum": 1,"maximum": 50,"default": 50},
+          "cursor": {"type": "string","maxLength": 2048,"minLength": 1},
+          "componentPath": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 16},
+          "group": {"enum": ["application","liveness","readiness"],"default": "application"},
+          "includeDetails": {"type": "boolean","default": false},
+          "includeHealthy": {"type": "boolean","default": false},
+          "maxDepth": {"type": "integer","minimum": 0,"maximum": 16,"default": 4}
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "schemaVersion": {"const": "2"},
+          "status": {"enum": ["ok","partial","denied","unavailable","invalid","too_large"]},
+          "source": {
+            "type": "object",
+            "properties": {
+              "targetId": {"type": "string","maxLength": 64},
+              "snapshotId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]},
+              "observedAt": {"type": "string","format": "date-time"},
+              "endpointIds": {
+                "type": "array",
+                "items": {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                "maxItems": 14,
+                "uniqueItems": true
+              },
+              "bootVersion": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+              "adapterVersion": {"type": "string","maxLength": 32},
+              "policyVersion": {"type": "string","maxLength": 32}
+            },
+            "required": ["targetId","snapshotId","observedAt","endpointIds","bootVersion","adapterVersion","policyVersion"],
+            "additionalProperties": false
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "overallStatus": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+                  "activeGroup": {"enum": ["application","liveness","readiness"]},
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {"type": "string","maxLength": 96},
+                        "endpointId": {"enum": ["health","health-liveness","health-readiness"]},
+                        "observationId": {"type": "string","maxLength": 96},
+                        "componentPath": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 16},
+                        "parentId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]},
+                        "status": {"type": "string","maxLength": 64},
+                        "details": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {"name": {"type": "string","maxLength": 128},"value": {"type": ["string","number","boolean","null"],"maxLength": 512}},
+                            "required": ["name","value"],
+                            "additionalProperties": false
+                          },
+                          "maxItems": 10
+                        },
+                        "errorType": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "remediationCodes": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 4},
+                        "childrenComplete": {"type": "boolean"}
+                      },
+                      "required": ["id","endpointId","observationId","componentPath","parentId","status","details","errorType","remediationCodes","childrenComplete"],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 50
+                  }
+                },
+                "required": ["overallStatus","activeGroup","items"],
+                "additionalProperties": false
+              },
+              {"type": "null"}
+            ]
+          },
+          "totalMatched": {"anyOf": [{"type": "integer","minimum": 0},{"type": "null"}]},
+          "truncated": {"type": "boolean"},
+          "truncationReasons": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 8},
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "state": {"enum": ["complete","partial","unavailable"]},
+              "scope": {"type": "string","maxLength": 256},
+              "gaps": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 10}
+            },
+            "required": ["state","scope","gaps"],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {"code": {"type": "string","maxLength": 64},"recordId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]}},
+              "required": ["code","recordId"],
+              "additionalProperties": false
+            },
+            "maxItems": 10
+          },
+          "redactions": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 50},
+          "nextCursor": {"anyOf": [{"type": "string","maxLength": 2048},{"type": "null"}]},
+          "nextAction": {
+            "type": "object",
+            "properties": {
+              "kind": {"enum": ["done","refine","page","remediate"]},
+              "reasonCode": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "filterSuggestions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "parameter": {"type": "string","maxLength": 64},
+                    "value": {"anyOf": [{"type": ["string","number","boolean","null"],"maxLength": 512},{"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 10}]}
+                  },
+                  "required": ["parameter","value"],
+                  "additionalProperties": false
+                },
+                "maxItems": 4
+              }
+            },
+            "required": ["kind","reasonCode","filterSuggestions"],
+            "additionalProperties": false
+          },
+          "errors": {"type": "array","items": {"$ref": "#/$defs/DiagnosticError"},"maxItems": 8}
+        },
+        "required": ["schemaVersion","status","source","data","totalMatched","truncated","truncationReasons","coverage","warnings","redactions","nextCursor","nextAction","errors"],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {"properties": {"status": {"enum": ["denied","unavailable","invalid","too_large"]}},"required": ["status"]},
+            "then": {
+              "properties": {"data": {"type": "null"},"totalMatched": {"type": "null"},"nextCursor": {"type": "null"},"errors": {"minItems": 1},"coverage": {"properties": {"state": {"const": "unavailable"}}}}
+            }
+          },
+          {
+            "if": {"properties": {"status": {"const": "ok"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"errors": {"maxItems": 0},"coverage": {"properties": {"state": {"const": "complete"}}}}}
+          },
+          {
+            "if": {"properties": {"status": {"const": "partial"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"coverage": {"properties": {"state": {"const": "partial"}}}}}
+          }
+        ],
+        "$defs": {
+          "DiagnosticError": {
+            "type": "object",
+            "properties": {
+              "code": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "endpointId": {
+                "anyOf": [
+                  {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                  {"type": "null"}
+                ]
+              },
+              "httpStatus": {"anyOf": [{"type": "integer","minimum": 100,"maximum": 599},{"type": "null"}]},
+              "retryable": {"type": "boolean"},
+              "message": {"type": "string","maxLength": 256,"description": "Local static template only; never upstream text."},
+              "remediation": {
+                "type": "object",
+                "properties": {
+                  "recipeId": {"type": "string","maxLength": 96},
+                  "action": {"enum": ["refineQuery","configureCapability","reviewExposure","reviewAuthorization","configureStartup","reviewTarget","reviewSource","stop"]},
+                  "configKeys": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 8},
+                  "steps": {"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 4},
+                  "requiresApproval": {"type": "boolean"},
+                  "retryAfterMs": {"anyOf": [{"type": "integer","minimum": 0,"maximum": 5000},{"type": "null"}]}
+                },
+                "required": ["recipeId","action","configKeys","steps","requiresApproval","retryAfterMs"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["code","endpointId","httpStatus","retryable","message","remediation"],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "name": "springboot_inspect_beans",
+      "description": "返回匹配 Bean、别名及双向依赖图，并在 Bean 缺失时自动读取已授权条件报告、展开嵌套与传递阻塞链；排查注入或条件装配时调用，证据不足时返回 unknown，不猜测确切原因。",
+      "annotations": {"title": "Bean 装配与条件诊断","readOnlyHint": true,"destructiveHint": false,"idempotentHint": true,"openWorldHint": false},
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "targetId": {"type": "string","minLength": 1,"maxLength": 64,"pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])","default": "local"},
+          "maxResults": {"type": "integer","minimum": 1,"maximum": 50,"default": 50},
+          "cursor": {"type": "string","maxLength": 2048,"minLength": 1},
+          "beanNamePattern": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.$/{}:*?+@! -]+$(?![\\s\\S])",
+            "description": "Bounded case-sensitive glob: only * and ? are wildcards; all other allowed characters are literal. No regex."
+          },
+          "typePattern": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.$/{}:*?+@! -]+$(?![\\s\\S])",
+            "description": "Bounded case-sensitive glob: only * and ? are wildcards; all other allowed characters are literal. No regex."
+          },
+          "packagePrefix": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+          "contextId": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+          "direction": {"enum": ["dependencies","dependents","both"],"default": "both"},
+          "maxDepth": {"type": "integer","minimum": 0,"maximum": 16,"default": 2},
+          "conditionDepth": {"type": "integer","minimum": 0,"maximum": 16,"default": 4}
+        },
+        "required": [],
+        "additionalProperties": false,
+        "allOf": [{"anyOf": [{"required": ["beanNamePattern"]},{"required": ["typePattern"]},{"required": ["packagePrefix"]}]}]
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "schemaVersion": {"const": "2"},
+          "status": {"enum": ["ok","partial","denied","unavailable","invalid","too_large"]},
+          "source": {
+            "type": "object",
+            "properties": {
+              "targetId": {"type": "string","maxLength": 64},
+              "snapshotId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]},
+              "observedAt": {"type": "string","format": "date-time"},
+              "endpointIds": {
+                "type": "array",
+                "items": {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                "maxItems": 14,
+                "uniqueItems": true
+              },
+              "bootVersion": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+              "adapterVersion": {"type": "string","maxLength": 32},
+              "policyVersion": {"type": "string","maxLength": 32}
+            },
+            "required": ["targetId","snapshotId","observedAt","endpointIds","bootVersion","adapterVersion","policyVersion"],
+            "additionalProperties": false
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {"type": "string","maxLength": 96},
+                        "endpointId": {"enum": ["beans"]},
+                        "observationId": {"type": "string","maxLength": 96},
+                        "contextId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "parentContextId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "name": {"type": "string","maxLength": 256},
+                        "type": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "scope": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+                        "resource": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "aliases": {"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 16},
+                        "producer": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {"enum": ["configuration","factoryMethod","factoryBean"]},
+                                "configurationClass": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                                "methodName": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                                "evidenceLevel": {"enum": ["observed","correlated"]}
+                              },
+                              "required": ["kind","configurationClass","methodName","evidenceLevel"],
+                              "additionalProperties": false
+                            },
+                            {"type": "null"}
+                          ]
+                        },
+                        "dependencies": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "fromId": {"type": "string","maxLength": 96},
+                              "toId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]},
+                              "requestedName": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                              "targetContextId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                              "targetName": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                              "resolution": {"enum": ["resolved","ambiguous","unresolved"]},
+                              "depth": {"type": "integer","minimum": 0,"maximum": 16}
+                            },
+                            "required": ["fromId","toId","requestedName","targetContextId","targetName","resolution","depth"],
+                            "additionalProperties": false
+                          },
+                          "maxItems": 16
+                        },
+                        "dependents": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "fromId": {"type": "string","maxLength": 96},
+                              "toId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]},
+                              "requestedName": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                              "targetContextId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                              "targetName": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                              "resolution": {"enum": ["resolved","ambiguous","unresolved"]},
+                              "depth": {"type": "integer","minimum": 0,"maximum": 16}
+                            },
+                            "required": ["fromId","toId","requestedName","targetContextId","targetName","resolution","depth"],
+                            "additionalProperties": false
+                          },
+                          "maxItems": 16
+                        }
+                      },
+                      "required": ["id","endpointId","observationId","contextId","parentContextId","name","type","scope","resource","aliases","producer","dependencies","dependents"],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 50
+                  },
+                  "missingBeanAnalysis": {
+                    "type": "object",
+                    "properties": {
+                      "state": {"enum": ["notNeeded","explained","partial","unknown"]},
+                      "conditions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {"type": "string","maxLength": 96},
+                            "configurationClass": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                            "conditionType": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                            "operator": {"enum": ["leaf","any","all","none","unknown"]},
+                            "outcome": {"enum": ["matched","notMatched","unknown"]},
+                            "reasonCode": {"type": "string","maxLength": 64},
+                            "childIds": {"type": "array","items": {"type": "string","maxLength": 96},"maxItems": 16},
+                            "requiredBeanIds": {"type": "array","items": {"type": "string","maxLength": 96},"maxItems": 16},
+                            "childrenComplete": {"type": "boolean"}
+                          },
+                          "required": ["id","configurationClass","conditionType","operator","outcome","reasonCode","childIds","requiredBeanIds","childrenComplete"],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 16
+                      },
+                      "blockingPaths": {"type": "array","items": {"type": "array","items": {"type": "string","maxLength": 96},"maxItems": 16},"maxItems": 8}
+                    },
+                    "required": ["state","conditions","blockingPaths"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["items","missingBeanAnalysis"],
+                "additionalProperties": false
+              },
+              {"type": "null"}
+            ]
+          },
+          "totalMatched": {"anyOf": [{"type": "integer","minimum": 0},{"type": "null"}]},
+          "truncated": {"type": "boolean"},
+          "truncationReasons": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 8},
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "state": {"enum": ["complete","partial","unavailable"]},
+              "scope": {"type": "string","maxLength": 256},
+              "gaps": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 10}
+            },
+            "required": ["state","scope","gaps"],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {"code": {"type": "string","maxLength": 64},"recordId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]}},
+              "required": ["code","recordId"],
+              "additionalProperties": false
+            },
+            "maxItems": 10
+          },
+          "redactions": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 50},
+          "nextCursor": {"anyOf": [{"type": "string","maxLength": 2048},{"type": "null"}]},
+          "nextAction": {
+            "type": "object",
+            "properties": {
+              "kind": {"enum": ["done","refine","page","remediate"]},
+              "reasonCode": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "filterSuggestions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "parameter": {"type": "string","maxLength": 64},
+                    "value": {"anyOf": [{"type": ["string","number","boolean","null"],"maxLength": 512},{"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 10}]}
+                  },
+                  "required": ["parameter","value"],
+                  "additionalProperties": false
+                },
+                "maxItems": 4
+              }
+            },
+            "required": ["kind","reasonCode","filterSuggestions"],
+            "additionalProperties": false
+          },
+          "errors": {"type": "array","items": {"$ref": "#/$defs/DiagnosticError"},"maxItems": 8}
+        },
+        "required": ["schemaVersion","status","source","data","totalMatched","truncated","truncationReasons","coverage","warnings","redactions","nextCursor","nextAction","errors"],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {"properties": {"status": {"enum": ["denied","unavailable","invalid","too_large"]}},"required": ["status"]},
+            "then": {
+              "properties": {"data": {"type": "null"},"totalMatched": {"type": "null"},"nextCursor": {"type": "null"},"errors": {"minItems": 1},"coverage": {"properties": {"state": {"const": "unavailable"}}}}
+            }
+          },
+          {
+            "if": {"properties": {"status": {"const": "ok"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"errors": {"maxItems": 0},"coverage": {"properties": {"state": {"const": "complete"}}}}}
+          },
+          {
+            "if": {"properties": {"status": {"const": "partial"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"coverage": {"properties": {"state": {"const": "partial"}}}}}
+          }
+        ],
+        "$defs": {
+          "DiagnosticError": {
+            "type": "object",
+            "properties": {
+              "code": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "endpointId": {
+                "anyOf": [
+                  {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                  {"type": "null"}
+                ]
+              },
+              "httpStatus": {"anyOf": [{"type": "integer","minimum": 100,"maximum": 599},{"type": "null"}]},
+              "retryable": {"type": "boolean"},
+              "message": {"type": "string","maxLength": 256,"description": "Local static template only; never upstream text."},
+              "remediation": {
+                "type": "object",
+                "properties": {
+                  "recipeId": {"type": "string","maxLength": 96},
+                  "action": {"enum": ["refineQuery","configureCapability","reviewExposure","reviewAuthorization","configureStartup","reviewTarget","reviewSource","stop"]},
+                  "configKeys": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 8},
+                  "steps": {"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 4},
+                  "requiresApproval": {"type": "boolean"},
+                  "retryAfterMs": {"anyOf": [{"type": "integer","minimum": 0,"maximum": 5000},{"type": "null"}]}
+                },
+                "required": ["recipeId","action","configKeys","steps","requiresApproval","retryAfterMs"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["code","endpointId","httpStatus","retryable","message","remediation"],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "name": "springboot_inspect_config",
+      "description": "返回双层强制脱敏后的生效属性、绑定 Bean、来源位置及 Active Profiles；排查属性绑定或配置覆盖时按前缀或键模式调用，能力默认关闭且不能用于获取秘密或导出全量配置。",
+      "annotations": {"title": "生效配置与来源诊断","readOnlyHint": true,"destructiveHint": false,"idempotentHint": true,"openWorldHint": false},
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "targetId": {"type": "string","minLength": 1,"maxLength": 64,"pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])","default": "local"},
+          "maxResults": {"type": "integer","minimum": 1,"maximum": 50,"default": 50},
+          "cursor": {"type": "string","maxLength": 2048,"minLength": 1},
+          "prefix": {"type": "string","minLength": 1,"maxLength": 128,"pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$(?![\\s\\S])"},
+          "propertyKeyPattern": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.$/{}:*?+@! -]+$(?![\\s\\S])",
+            "description": "Bounded case-sensitive glob: only * and ? are wildcards; all other allowed characters are literal. No regex."
+          },
+          "contextId": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+          "includeValues": {"type": "boolean","default": false}
+        },
+        "required": [],
+        "additionalProperties": false,
+        "allOf": [{"anyOf": [{"required": ["prefix"]},{"required": ["propertyKeyPattern"]}]}]
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "schemaVersion": {"const": "2"},
+          "status": {"enum": ["ok","partial","denied","unavailable","invalid","too_large"]},
+          "source": {
+            "type": "object",
+            "properties": {
+              "targetId": {"type": "string","maxLength": 64},
+              "snapshotId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]},
+              "observedAt": {"type": "string","format": "date-time"},
+              "endpointIds": {
+                "type": "array",
+                "items": {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                "maxItems": 14,
+                "uniqueItems": true
+              },
+              "bootVersion": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+              "adapterVersion": {"type": "string","maxLength": 32},
+              "policyVersion": {"type": "string","maxLength": 32}
+            },
+            "required": ["targetId","snapshotId","observedAt","endpointIds","bootVersion","adapterVersion","policyVersion"],
+            "additionalProperties": false
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "activeProfiles": {"anyOf": [{"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 20},{"type": "null"}]},
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {"type": "string","maxLength": 96},
+                        "endpointId": {"enum": ["env","configprops","env-property"]},
+                        "observationId": {"type": "string","maxLength": 96},
+                        "contextId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "parentContextId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "propertyKey": {"type": "string","maxLength": 256},
+                        "prefix": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "configurationBean": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "effectiveValue": {"type": ["string","number","boolean","null"],"maxLength": 512},
+                        "valueState": {"enum": ["visible","redacted","notReported"]},
+                        "bindingValue": {"type": ["string","number","boolean","null"],"maxLength": 512},
+                        "bindingState": {"enum": ["visible","redacted","notReported"]},
+                        "origin": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {"enum": ["configurationFile","environmentVariable","systemProperty","commandLine","other","unknown"]},
+                            "file": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                            "line": {"anyOf": [{"type": "integer","minimum": 1},{"type": "null"}]},
+                            "column": {"anyOf": [{"type": "integer","minimum": 1},{"type": "null"}]},
+                            "environmentVariable": {"anyOf": [{"type": "string","maxLength": 128,"pattern": "^[A-Za-z_][A-Za-z0-9_]*$(?![\\s\\S])"},{"type": "null"}]}
+                          },
+                          "required": ["kind","file","line","column","environmentVariable"],
+                          "additionalProperties": false
+                        },
+                        "sourceKind": {"enum": ["configurationFile","environmentVariable","systemProperty","commandLine","other","unknown"]},
+                        "effective": {"enum": ["yes","no","unknown"]}
+                      },
+                      "required": [
+                        "id",
+                        "endpointId",
+                        "observationId",
+                        "contextId",
+                        "parentContextId",
+                        "propertyKey",
+                        "prefix",
+                        "configurationBean",
+                        "effectiveValue",
+                        "valueState",
+                        "bindingValue",
+                        "bindingState",
+                        "origin",
+                        "sourceKind",
+                        "effective"
+                      ],
+                      "additionalProperties": false,
+                      "allOf": [
+                        {"if": {"properties": {"valueState": {"const": "redacted"}}},"then": {"properties": {"effectiveValue": {"const": "[REDACTED_BY_MCP]"}}}},
+                        {"if": {"properties": {"valueState": {"const": "notReported"}}},"then": {"properties": {"effectiveValue": {"type": "null"}}}},
+                        {"if": {"properties": {"bindingState": {"const": "redacted"}}},"then": {"properties": {"bindingValue": {"const": "[REDACTED_BY_MCP]"}}}},
+                        {"if": {"properties": {"bindingState": {"const": "notReported"}}},"then": {"properties": {"bindingValue": {"type": "null"}}}}
+                      ]
+                    },
+                    "maxItems": 50
+                  }
+                },
+                "required": ["activeProfiles","items"],
+                "additionalProperties": false
+              },
+              {"type": "null"}
+            ]
+          },
+          "totalMatched": {"anyOf": [{"type": "integer","minimum": 0},{"type": "null"}]},
+          "truncated": {"type": "boolean"},
+          "truncationReasons": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 8},
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "state": {"enum": ["complete","partial","unavailable"]},
+              "scope": {"type": "string","maxLength": 256},
+              "gaps": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 10}
+            },
+            "required": ["state","scope","gaps"],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {"code": {"type": "string","maxLength": 64},"recordId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]}},
+              "required": ["code","recordId"],
+              "additionalProperties": false
+            },
+            "maxItems": 10
+          },
+          "redactions": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 50},
+          "nextCursor": {"anyOf": [{"type": "string","maxLength": 2048},{"type": "null"}]},
+          "nextAction": {
+            "type": "object",
+            "properties": {
+              "kind": {"enum": ["done","refine","page","remediate"]},
+              "reasonCode": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "filterSuggestions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "parameter": {"type": "string","maxLength": 64},
+                    "value": {"anyOf": [{"type": ["string","number","boolean","null"],"maxLength": 512},{"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 10}]}
+                  },
+                  "required": ["parameter","value"],
+                  "additionalProperties": false
+                },
+                "maxItems": 4
+              }
+            },
+            "required": ["kind","reasonCode","filterSuggestions"],
+            "additionalProperties": false
+          },
+          "errors": {"type": "array","items": {"$ref": "#/$defs/DiagnosticError"},"maxItems": 8}
+        },
+        "required": ["schemaVersion","status","source","data","totalMatched","truncated","truncationReasons","coverage","warnings","redactions","nextCursor","nextAction","errors"],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {"properties": {"status": {"enum": ["denied","unavailable","invalid","too_large"]}},"required": ["status"]},
+            "then": {
+              "properties": {"data": {"type": "null"},"totalMatched": {"type": "null"},"nextCursor": {"type": "null"},"errors": {"minItems": 1},"coverage": {"properties": {"state": {"const": "unavailable"}}}}
+            }
+          },
+          {
+            "if": {"properties": {"status": {"const": "ok"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"errors": {"maxItems": 0},"coverage": {"properties": {"state": {"const": "complete"}}}}}
+          },
+          {
+            "if": {"properties": {"status": {"const": "partial"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"coverage": {"properties": {"state": {"const": "partial"}}}}}
+          }
+        ],
+        "$defs": {
+          "DiagnosticError": {
+            "type": "object",
+            "properties": {
+              "code": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "endpointId": {
+                "anyOf": [
+                  {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                  {"type": "null"}
+                ]
+              },
+              "httpStatus": {"anyOf": [{"type": "integer","minimum": 100,"maximum": 599},{"type": "null"}]},
+              "retryable": {"type": "boolean"},
+              "message": {"type": "string","maxLength": 256,"description": "Local static template only; never upstream text."},
+              "remediation": {
+                "type": "object",
+                "properties": {
+                  "recipeId": {"type": "string","maxLength": 96},
+                  "action": {"enum": ["refineQuery","configureCapability","reviewExposure","reviewAuthorization","configureStartup","reviewTarget","reviewSource","stop"]},
+                  "configKeys": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 8},
+                  "steps": {"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 4},
+                  "requiresApproval": {"type": "boolean"},
+                  "retryAfterMs": {"anyOf": [{"type": "integer","minimum": 0,"maximum": 5000},{"type": "null"}]}
+                },
+                "required": ["recipeId","action","configKeys","steps","requiresApproval","retryAfterMs"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["code","endpointId","httpStatus","retryable","message","remediation"],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "name": "springboot_search_openapi",
+      "description": "返回匹配操作或 Schema，并默认内联直接与二阶同文档引用；确认接口契约时使用精确选择器调用，不执行业务接口、不返回全量文档，也不解析远程引用。",
+      "annotations": {"title": "OpenAPI 局部契约检索","readOnlyHint": true,"destructiveHint": false,"idempotentHint": true,"openWorldHint": false},
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "targetId": {"type": "string","minLength": 1,"maxLength": 64,"pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])","default": "local"},
+          "maxResults": {"type": "integer","minimum": 1,"maximum": 50,"default": 50},
+          "cursor": {"type": "string","maxLength": 2048,"minLength": 1},
+          "pathPattern": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.$/{}:*?+@! -]+$(?![\\s\\S])",
+            "description": "Bounded case-sensitive glob: only * and ? are wildcards; all other allowed characters are literal. No regex."
+          },
+          "httpMethod": {"enum": ["GET","HEAD","POST","PUT","PATCH","DELETE","OPTIONS","TRACE","CONNECT"]},
+          "operationId": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+          "schemaName": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"},
+          "maxRefDepth": {"type": "integer","minimum": 0,"maximum": 8,"default": 2}
+        },
+        "required": [],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "oneOf": [
+              {"required": ["schemaName"],"not": {"anyOf": [{"required": ["pathPattern"]},{"required": ["httpMethod"]},{"required": ["operationId"]}]}},
+              {"anyOf": [{"required": ["pathPattern"]},{"required": ["operationId"]}],"not": {"required": ["schemaName"]}}
+            ]
+          }
+        ]
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "schemaVersion": {"const": "2"},
+          "status": {"enum": ["ok","partial","denied","unavailable","invalid","too_large"]},
+          "source": {
+            "type": "object",
+            "properties": {
+              "targetId": {"type": "string","maxLength": 64},
+              "snapshotId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]},
+              "observedAt": {"type": "string","format": "date-time"},
+              "endpointIds": {
+                "type": "array",
+                "items": {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                "maxItems": 14,
+                "uniqueItems": true
+              },
+              "bootVersion": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+              "adapterVersion": {"type": "string","maxLength": 32},
+              "policyVersion": {"type": "string","maxLength": 32}
+            },
+            "required": ["targetId","snapshotId","observedAt","endpointIds","bootVersion","adapterVersion","policyVersion"],
+            "additionalProperties": false
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "openapiVersion": {"anyOf": [{"type": "string","maxLength": 32},{"type": "null"}]},
+                  "candidateId": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {"type": "string","maxLength": 96},
+                        "endpointId": {"enum": ["openapi"]},
+                        "observationId": {"type": "string","maxLength": 96},
+                        "kind": {"enum": ["operation","schema"]},
+                        "path": {"anyOf": [{"type": "string","minLength": 1,"maxLength": 1024,"pattern": "^/[^\\u0000-\\u001f\\u007f?#]*$(?![\\s\\S])"},{"type": "null"}]},
+                        "httpMethod": {"anyOf": [{"enum": ["GET","HEAD","POST","PUT","PATCH","DELETE","OPTIONS","TRACE","CONNECT"]},{"type": "null"}]},
+                        "operationId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "schemaName": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "parameters": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {"name": {"type": "string","maxLength": 128},"in": {"enum": ["path","query","header","cookie"]},"required": {"type": "boolean"},"schema": {"$ref": "#/$defs/Schema"}},
+                            "required": ["name","in","required","schema"],
+                            "additionalProperties": false
+                          },
+                          "maxItems": 16
+                        },
+                        "requestBody": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {"mediaType": {"type": "string","maxLength": 128},"schema": {"$ref": "#/$defs/Schema"}},
+                            "required": ["mediaType","schema"],
+                            "additionalProperties": false
+                          },
+                          "maxItems": 8
+                        },
+                        "responses": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "status": {"type": "string","maxLength": 16},
+                              "mediaType": {"anyOf": [{"type": "string","maxLength": 128},{"type": "null"}]},
+                              "schema": {"anyOf": [{"$ref": "#/$defs/Schema"},{"type": "null"}]}
+                            },
+                            "required": ["status","mediaType","schema"],
+                            "additionalProperties": false
+                          },
+                          "maxItems": 16
+                        },
+                        "schema": {"anyOf": [{"$ref": "#/$defs/Schema"},{"type": "null"}]},
+                        "expansionComplete": {"type": "boolean"}
+                      },
+                      "required": ["id","endpointId","observationId","kind","path","httpMethod","operationId","schemaName","parameters","requestBody","responses","schema","expansionComplete"],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 50
+                  }
+                },
+                "required": ["openapiVersion","candidateId","items"],
+                "additionalProperties": false
+              },
+              {"type": "null"}
+            ]
+          },
+          "totalMatched": {"anyOf": [{"type": "integer","minimum": 0},{"type": "null"}]},
+          "truncated": {"type": "boolean"},
+          "truncationReasons": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 8},
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "state": {"enum": ["complete","partial","unavailable"]},
+              "scope": {"type": "string","maxLength": 256},
+              "gaps": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 10}
+            },
+            "required": ["state","scope","gaps"],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {"code": {"type": "string","maxLength": 64},"recordId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]}},
+              "required": ["code","recordId"],
+              "additionalProperties": false
+            },
+            "maxItems": 10
+          },
+          "redactions": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 50},
+          "nextCursor": {"anyOf": [{"type": "string","maxLength": 2048},{"type": "null"}]},
+          "nextAction": {
+            "type": "object",
+            "properties": {
+              "kind": {"enum": ["done","refine","page","remediate"]},
+              "reasonCode": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "filterSuggestions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "parameter": {"type": "string","maxLength": 64},
+                    "value": {"anyOf": [{"type": ["string","number","boolean","null"],"maxLength": 512},{"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 10}]}
+                  },
+                  "required": ["parameter","value"],
+                  "additionalProperties": false
+                },
+                "maxItems": 4
+              }
+            },
+            "required": ["kind","reasonCode","filterSuggestions"],
+            "additionalProperties": false
+          },
+          "errors": {"type": "array","items": {"$ref": "#/$defs/DiagnosticError"},"maxItems": 8}
+        },
+        "required": ["schemaVersion","status","source","data","totalMatched","truncated","truncationReasons","coverage","warnings","redactions","nextCursor","nextAction","errors"],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {"properties": {"status": {"enum": ["denied","unavailable","invalid","too_large"]}},"required": ["status"]},
+            "then": {
+              "properties": {"data": {"type": "null"},"totalMatched": {"type": "null"},"nextCursor": {"type": "null"},"errors": {"minItems": 1},"coverage": {"properties": {"state": {"const": "unavailable"}}}}
+            }
+          },
+          {
+            "if": {"properties": {"status": {"const": "ok"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"errors": {"maxItems": 0},"coverage": {"properties": {"state": {"const": "complete"}}}}}
+          },
+          {
+            "if": {"properties": {"status": {"const": "partial"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"coverage": {"properties": {"state": {"const": "partial"}}}}}
+          }
+        ],
+        "$defs": {
+          "DiagnosticError": {
+            "type": "object",
+            "properties": {
+              "code": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "endpointId": {
+                "anyOf": [
+                  {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                  {"type": "null"}
+                ]
+              },
+              "httpStatus": {"anyOf": [{"type": "integer","minimum": 100,"maximum": 599},{"type": "null"}]},
+              "retryable": {"type": "boolean"},
+              "message": {"type": "string","maxLength": 256,"description": "Local static template only; never upstream text."},
+              "remediation": {
+                "type": "object",
+                "properties": {
+                  "recipeId": {"type": "string","maxLength": 96},
+                  "action": {"enum": ["refineQuery","configureCapability","reviewExposure","reviewAuthorization","configureStartup","reviewTarget","reviewSource","stop"]},
+                  "configKeys": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 8},
+                  "steps": {"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 4},
+                  "requiresApproval": {"type": "boolean"},
+                  "retryAfterMs": {"anyOf": [{"type": "integer","minimum": 0,"maximum": 5000},{"type": "null"}]}
+                },
+                "required": ["recipeId","action","configKeys","steps","requiresApproval","retryAfterMs"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["code","endpointId","httpStatus","retryable","message","remediation"],
+            "additionalProperties": false
+          },
+          "Schema": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "anyOf": [
+                  {"enum": ["null","boolean","object","array","number","string","integer"]},
+                  {"type": "array","items": {"enum": ["null","boolean","object","array","number","string","integer"]},"maxItems": 7}
+                ]
+              },
+              "format": {"type": "string","maxLength": 64},
+              "nullable": {"type": "boolean"},
+              "readOnly": {"type": "boolean"},
+              "writeOnly": {"type": "boolean"},
+              "minimum": {"type": "number"},
+              "maximum": {"type": "number"},
+              "exclusiveMinimum": {"type": ["number","boolean"]},
+              "exclusiveMaximum": {"type": ["number","boolean"]},
+              "multipleOf": {"type": "number","exclusiveMinimum": 0},
+              "minLength": {"type": "integer","minimum": 0},
+              "maxLength": {"type": "integer","minimum": 0},
+              "pattern": {"type": "string","maxLength": 512},
+              "minItems": {"type": "integer","minimum": 0},
+              "maxItems": {"type": "integer","minimum": 0},
+              "uniqueItems": {"type": "boolean"},
+              "required": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 50},
+              "properties": {"type": "object","maxProperties": 50,"propertyNames": {"type": "string","maxLength": 128},"additionalProperties": {"$ref": "#/$defs/Schema"}},
+              "items": {"$ref": "#/$defs/Schema"},
+              "additionalProperties": {"anyOf": [{"type": "boolean"},{"$ref": "#/$defs/Schema"}]},
+              "allOf": {"type": "array","items": {"$ref": "#/$defs/Schema"},"maxItems": 16},
+              "oneOf": {"type": "array","items": {"$ref": "#/$defs/Schema"},"maxItems": 16},
+              "anyOf": {"type": "array","items": {"$ref": "#/$defs/Schema"},"maxItems": 16},
+              "$ref": {"type": "string","maxLength": 512,"pattern": "^#(?:/.*)?$(?![\\s\\S])"},
+              "referenceState": {"enum": ["resolved","cycle","depthLimit","invalid","externalBlocked","unsupported"]},
+              "omissionCodes": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 8},
+              "enum": {"type": "array","items": {"type": ["string","number","boolean","null"],"maxLength": 512},"maxItems": 16}
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "name": "springboot_verify_mappings",
+      "description": "返回统一的 MVC/WebFlux 路由、处理器和方法描述符；排查路径、方法或 Controller 未注册时调用，不向业务 URL 发请求，也不把注册匹配等同于请求一定成功。",
+      "annotations": {"title": "HTTP 路由注册核验","readOnlyHint": true,"destructiveHint": false,"idempotentHint": true,"openWorldHint": false},
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "targetId": {"type": "string","minLength": 1,"maxLength": 64,"pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])","default": "local"},
+          "maxResults": {"type": "integer","minimum": 1,"maximum": 50,"default": 50},
+          "cursor": {"type": "string","maxLength": 2048,"minLength": 1},
+          "pathPattern": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.$/{}:*?+@! -]+$(?![\\s\\S])",
+            "description": "Bounded case-sensitive glob: only * and ? are wildcards; all other allowed characters are literal. No regex."
+          },
+          "httpMethod": {"enum": ["GET","HEAD","POST","PUT","PATCH","DELETE","OPTIONS","TRACE","CONNECT"]},
+          "controllerClassPattern": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.$/{}:*?+@! -]+$(?![\\s\\S])",
+            "description": "Bounded case-sensitive glob: only * and ? are wildcards; all other allowed characters are literal. No regex."
+          },
+          "contextId": {"type": "string","minLength": 1,"maxLength": 256,"pattern": "^[^\\u0000-\\u001f\\u007f]+$(?![\\s\\S])"}
+        },
+        "required": [],
+        "additionalProperties": false,
+        "allOf": [{"anyOf": [{"required": ["pathPattern"]},{"required": ["httpMethod"]},{"required": ["controllerClassPattern"]}]}]
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "schemaVersion": {"const": "2"},
+          "status": {"enum": ["ok","partial","denied","unavailable","invalid","too_large"]},
+          "source": {
+            "type": "object",
+            "properties": {
+              "targetId": {"type": "string","maxLength": 64},
+              "snapshotId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]},
+              "observedAt": {"type": "string","format": "date-time"},
+              "endpointIds": {
+                "type": "array",
+                "items": {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                "maxItems": 14,
+                "uniqueItems": true
+              },
+              "bootVersion": {"anyOf": [{"type": "string","maxLength": 64},{"type": "null"}]},
+              "adapterVersion": {"type": "string","maxLength": 32},
+              "policyVersion": {"type": "string","maxLength": 32}
+            },
+            "required": ["targetId","snapshotId","observedAt","endpointIds","bootVersion","adapterVersion","policyVersion"],
+            "additionalProperties": false
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {"type": "string","maxLength": 96},
+                        "endpointId": {"enum": ["mappings"]},
+                        "observationId": {"type": "string","maxLength": 96},
+                        "contextId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "parentContextId": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "stack": {"enum": ["mvc","webflux"]},
+                        "dispatcherName": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "paths": {"type": "array","items": {"type": "string","maxLength": 1024},"maxItems": 16},
+                        "httpMethods": {"type": "array","items": {"enum": ["GET","HEAD","POST","PUT","PATCH","DELETE","OPTIONS","TRACE","CONNECT"]},"maxItems": 9},
+                        "methodsUnrestricted": {"type": "boolean"},
+                        "controllerClass": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "handlerMethod": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                        "descriptor": {"anyOf": [{"type": "string","maxLength": 1024},{"type": "null"}]},
+                        "handlerKind": {"enum": ["method","function","resource","unknown"]},
+                        "conditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {"enum": ["header","param","consumes","produces"]},
+                              "name": {"anyOf": [{"type": "string","maxLength": 128},{"type": "null"}]},
+                              "value": {"anyOf": [{"type": "string","maxLength": 256},{"type": "null"}]},
+                              "negated": {"type": "boolean"}
+                            },
+                            "required": ["kind","name","value","negated"],
+                            "additionalProperties": false
+                          },
+                          "maxItems": 16
+                        },
+                        "matchingComplete": {"type": "boolean"}
+                      },
+                      "required": [
+                        "id",
+                        "endpointId",
+                        "observationId",
+                        "contextId",
+                        "parentContextId",
+                        "stack",
+                        "dispatcherName",
+                        "paths",
+                        "httpMethods",
+                        "methodsUnrestricted",
+                        "controllerClass",
+                        "handlerMethod",
+                        "descriptor",
+                        "handlerKind",
+                        "conditions",
+                        "matchingComplete"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 50
+                  }
+                },
+                "required": ["items"],
+                "additionalProperties": false
+              },
+              {"type": "null"}
+            ]
+          },
+          "totalMatched": {"anyOf": [{"type": "integer","minimum": 0},{"type": "null"}]},
+          "truncated": {"type": "boolean"},
+          "truncationReasons": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 8},
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "state": {"enum": ["complete","partial","unavailable"]},
+              "scope": {"type": "string","maxLength": 256},
+              "gaps": {"type": "array","items": {"type": "string","maxLength": 64},"maxItems": 10}
+            },
+            "required": ["state","scope","gaps"],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {"code": {"type": "string","maxLength": 64},"recordId": {"anyOf": [{"type": "string","maxLength": 96},{"type": "null"}]}},
+              "required": ["code","recordId"],
+              "additionalProperties": false
+            },
+            "maxItems": 10
+          },
+          "redactions": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 50},
+          "nextCursor": {"anyOf": [{"type": "string","maxLength": 2048},{"type": "null"}]},
+          "nextAction": {
+            "type": "object",
+            "properties": {
+              "kind": {"enum": ["done","refine","page","remediate"]},
+              "reasonCode": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "filterSuggestions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "parameter": {"type": "string","maxLength": 64},
+                    "value": {"anyOf": [{"type": ["string","number","boolean","null"],"maxLength": 512},{"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 10}]}
+                  },
+                  "required": ["parameter","value"],
+                  "additionalProperties": false
+                },
+                "maxItems": 4
+              }
+            },
+            "required": ["kind","reasonCode","filterSuggestions"],
+            "additionalProperties": false
+          },
+          "errors": {"type": "array","items": {"$ref": "#/$defs/DiagnosticError"},"maxItems": 8}
+        },
+        "required": ["schemaVersion","status","source","data","totalMatched","truncated","truncationReasons","coverage","warnings","redactions","nextCursor","nextAction","errors"],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {"properties": {"status": {"enum": ["denied","unavailable","invalid","too_large"]}},"required": ["status"]},
+            "then": {
+              "properties": {"data": {"type": "null"},"totalMatched": {"type": "null"},"nextCursor": {"type": "null"},"errors": {"minItems": 1},"coverage": {"properties": {"state": {"const": "unavailable"}}}}
+            }
+          },
+          {
+            "if": {"properties": {"status": {"const": "ok"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"errors": {"maxItems": 0},"coverage": {"properties": {"state": {"const": "complete"}}}}}
+          },
+          {
+            "if": {"properties": {"status": {"const": "partial"}},"required": ["status"]},
+            "then": {"properties": {"data": {"type": "object"},"coverage": {"properties": {"state": {"const": "partial"}}}}}
+          }
+        ],
+        "$defs": {
+          "DiagnosticError": {
+            "type": "object",
+            "properties": {
+              "code": {"type": "string","maxLength": 64,"pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
+              "endpointId": {
+                "anyOf": [
+                  {"enum": ["startup","flyway","liquibase","beans","conditions","mappings","health","health-liveness","health-readiness","env","configprops","env-property","info","openapi"]},
+                  {"type": "null"}
+                ]
+              },
+              "httpStatus": {"anyOf": [{"type": "integer","minimum": 100,"maximum": 599},{"type": "null"}]},
+              "retryable": {"type": "boolean"},
+              "message": {"type": "string","maxLength": 256,"description": "Local static template only; never upstream text."},
+              "remediation": {
+                "type": "object",
+                "properties": {
+                  "recipeId": {"type": "string","maxLength": 96},
+                  "action": {"enum": ["refineQuery","configureCapability","reviewExposure","reviewAuthorization","configureStartup","reviewTarget","reviewSource","stop"]},
+                  "configKeys": {"type": "array","items": {"type": "string","maxLength": 128},"maxItems": 8},
+                  "steps": {"type": "array","items": {"type": "string","maxLength": 256},"maxItems": 4},
+                  "requiresApproval": {"type": "boolean"},
+                  "retryAfterMs": {"anyOf": [{"type": "integer","minimum": 0,"maximum": 5000},{"type": "null"}]}
+                },
+                "required": ["recipeId","action","configKeys","steps","requiresApproval","retryAfterMs"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["code","endpointId","httpStatus","retryable","message","remediation"],
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ]
+}

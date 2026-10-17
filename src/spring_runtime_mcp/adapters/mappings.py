@@ -1,0 +1,209 @@
+"""Normalize MVC dispatcherServlets and WebFlux dispatcherHandlers."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from ..contracts.definitions import glob_matches
+
+_METHODS = {
+    "GET",
+    "HEAD",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+    "TRACE",
+    "CONNECT",
+}
+
+
+def _conditions(raw: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
+    rows: list[dict[str, Any]] = []
+    complete = True
+    for kind, key in (
+        ("consumes", "consumes"),
+        ("produces", "produces"),
+        ("header", "headers"),
+        ("param", "params"),
+    ):
+        values = raw.get(key, [])
+        if not isinstance(values, list):
+            complete = False
+            continue
+        for value in values:
+            if len(rows) >= 16:
+                complete = False
+                break
+            if isinstance(value, dict):
+                media = value.get("mediaType", value.get("value"))
+                rows.append(
+                    {
+                        "kind": kind,
+                        "name": value.get("name")
+                        if isinstance(value.get("name"), str)
+                        else None,
+                        "value": media
+                        if isinstance(media, str) and len(media) <= 256
+                        else None,
+                        "negated": bool(value.get("negated", False)),
+                    }
+                )
+            elif isinstance(value, str) and len(value) <= 256:
+                rows.append(
+                    {"kind": kind, "name": None, "value": value, "negated": False}
+                )
+    return rows, complete
+
+
+def normalize_mappings(
+    body: Any,
+    *,
+    path_pattern: str | None,
+    http_method: str | None,
+    controller_pattern: str | None,
+    context_id: str | None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    if not isinstance(body, dict) or not isinstance(body.get("contexts"), dict):
+        raise ValueError("INVALID_MAPPINGS_SHAPE")
+    gaps: set[str] = set()
+    found: list[dict[str, Any]] = []
+    for context_name in sorted(body["contexts"]):
+        if not isinstance(context_name, str):
+            gaps.add("INVALID_CONTEXT_NAME")
+            continue
+        if context_id and context_name != context_id:
+            continue
+        context = body["contexts"][context_name]
+        if not isinstance(context, dict):
+            gaps.add("INVALID_CONTEXT")
+            continue
+        parent = context.get("parentId")
+        mappings = context.get("mappings")
+        if not isinstance(mappings, dict):
+            gaps.add("MAPPINGS_UNOBSERVED")
+            continue
+        trees = (
+            ("mvc", "dispatcherServlets"),
+            ("webflux", "dispatcherHandlers"),
+        )
+        for stack, tree_name in trees:
+            tree = mappings.get(tree_name)
+            if tree is None:
+                continue
+            if not isinstance(tree, dict):
+                gaps.add("MAPPINGS_UNOBSERVED")
+                continue
+            for dispatcher in sorted(tree):
+                records = tree[dispatcher]
+                if not isinstance(records, list):
+                    gaps.add("MAPPINGS_UNOBSERVED")
+                    continue
+                for record in records:
+                    if not isinstance(record, dict):
+                        gaps.add("MAPPING_RECORD_UNREADABLE")
+                        continue
+                    details = record.get("details")
+                    method = (
+                        details.get("handlerMethod")
+                        if isinstance(details, dict)
+                        else None
+                    )
+                    conditions_raw = (
+                        details.get("requestMappingConditions")
+                        if isinstance(details, dict)
+                        else None
+                    )
+                    class_name = (
+                        method.get("className") if isinstance(method, dict) else None
+                    )
+                    method_name = (
+                        method.get("name") if isinstance(method, dict) else None
+                    )
+                    descriptor = (
+                        method.get("descriptor") if isinstance(method, dict) else None
+                    )
+                    handler = record.get("handler")
+                    if (
+                        not isinstance(class_name, str)
+                        and isinstance(handler, str)
+                        and "#" in handler
+                    ):
+                        class_name, _, method_name = handler.partition("#")
+                    patterns = []
+                    methods: list[str] = []
+                    condition_rows: list[dict[str, Any]] = []
+                    complete = isinstance(conditions_raw, dict)
+                    if isinstance(conditions_raw, dict):
+                        raw_patterns = conditions_raw.get("patterns", [])
+                        raw_methods = conditions_raw.get("methods", [])
+                        if isinstance(raw_patterns, list):
+                            patterns = [
+                                item
+                                for item in raw_patterns
+                                if isinstance(item, str) and len(item) <= 1024
+                            ][:16]
+                            if len(raw_patterns) > 16:
+                                complete = False
+                                gaps.add("MAPPING_PATH_LIMIT")
+                        else:
+                            complete = False
+                        if isinstance(raw_methods, list):
+                            methods = [
+                                item
+                                for item in raw_methods
+                                if isinstance(item, str) and item in _METHODS
+                            ][:9]
+                        else:
+                            complete = False
+                        condition_rows, condition_complete = _conditions(conditions_raw)
+                        complete = complete and condition_complete
+                    else:
+                        gaps.add("MAPPING_CONDITIONS_UNOBSERVED")
+                    if path_pattern and not any(
+                        glob_matches(path_pattern, pattern) for pattern in patterns
+                    ):
+                        continue
+                    unrestricted = not methods
+                    if http_method and not unrestricted and http_method not in methods:
+                        continue
+                    if controller_pattern and not (
+                        isinstance(class_name, str)
+                        and glob_matches(controller_pattern, class_name)
+                    ):
+                        continue
+                    found.append(
+                        {
+                            "contextId": context_name,
+                            "parentContextId": parent
+                            if isinstance(parent, str)
+                            else None,
+                            "stack": stack,
+                            "dispatcherName": dispatcher
+                            if isinstance(dispatcher, str)
+                            else None,
+                            "paths": patterns,
+                            "httpMethods": methods,
+                            "methodsUnrestricted": unrestricted,
+                            "controllerClass": class_name
+                            if isinstance(class_name, str)
+                            else None,
+                            "handlerMethod": method_name
+                            if isinstance(method_name, str)
+                            else None,
+                            "descriptor": descriptor
+                            if isinstance(descriptor, str)
+                            else None,
+                            "handlerKind": "method"
+                            if isinstance(method, dict)
+                            else "unknown",
+                            "conditions": condition_rows,
+                            "matchingComplete": complete,
+                        }
+                    )
+    items = []
+    for index, row in enumerate(found, start=1):
+        row["id"] = f"mapping_{index:06d}"
+        items.append(row)
+    return items, sorted(gaps)

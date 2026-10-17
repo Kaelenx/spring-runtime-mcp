@@ -1,0 +1,54 @@
+{
+  "targetId": "local",
+  "sourceRevision": "workspace-a1",
+  "types": [
+    {
+      "name": "example.PaymentGateway",
+      "directSupertypes": []
+    },
+    {
+      "name": "example.StripePaymentGateway",
+      "directSupertypes": [
+        "example.PaymentGateway"
+      ]
+    },
+    {
+      "name": "example.StripeClient",
+      "directSupertypes": []
+    }
+  ],
+  "producers": [
+    {
+      "contextId": "application",
+      "beanName": "stripePaymentGateway",
+      "aliases": [
+        "paymentGateway"
+      ],
+      "declaredType": "example.PaymentGateway",
+      "implementationType": "example.StripePaymentGateway",
+      "configurationClass": "example.PaymentConfiguration",
+      "factoryMethod": "stripePaymentGateway",
+      "conditionSources": [
+        "example.PaymentConfiguration#stripePaymentGateway"
+      ],
+      "sourceFile": "src/main/java/example/PaymentConfiguration.java",
+      "sourceLine": 12
+    },
+    {
+      "contextId": "application",
+      "beanName": "stripeClient",
+      "aliases": [
+        "stripeApiClient"
+      ],
+      "declaredType": "example.StripeClient",
+      "implementationType": null,
+      "configurationClass": "example.StripeConfiguration",
+      "factoryMethod": "stripeClient",
+      "conditionSources": [
+        "example.StripeConfiguration#stripeClient"
+      ],
+      "sourceFile": "src/main/java/example/StripeConfiguration.java",
+      "sourceLine": 18
+    }
+  ]
+}

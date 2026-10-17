@@ -1,0 +1,47 @@
+{
+  "auditDate": "2026-10-17",
+  "timezone": "Asia/Shanghai",
+  "scope": "Existing production code only; no live socket connector or MCP SDK host",
+  "pythonVersion": "3.14.8",
+  "nodeVersion": "24.20.0",
+  "testTools": {
+    "pytest": "8.4.2",
+    "jsonschema": "4.25.1",
+    "mypy": "1.18.2",
+    "ruff": "0.14.1"
+  },
+  "typescriptEntry": {
+    "command": "node --test tests/security/redteam-audit.test.ts",
+    "passedGroups": 5,
+    "failedGroups": 0,
+    "durationMs": 5096.163622
+  },
+  "pytest": {
+    "command": "uv run --offline --no-project --with pytest==8.4.2 --with jsonschema==4.25.1 python -m pytest -q",
+    "passed": 595,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "reportedDurationSeconds": 17.04,
+    "redteamCases": 257,
+    "redteamByVector": {
+      "injection": 29,
+      "leakage": 67,
+      "network": 84,
+      "readonly": 65,
+      "stdio": 12
+    }
+  },
+  "checks": {
+    "strictMypySourceModules": 29,
+    "ruffCheck": "passed",
+    "ruffFormat": "51 files unchanged",
+    "publishedSchemaAssertions": "144+ passed; 8 tool contracts"
+  },
+  "unverifiedLiveControls": [
+    "DNS/IP pinning and actual peer verification",
+    "TLS/SNI and environment proxy enforcement",
+    "Streaming decompression budgets",
+    "MCP SDK stdio lifecycle"
+  ]
+}

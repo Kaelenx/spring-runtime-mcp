@@ -1,0 +1,25 @@
+{
+  "contexts": {
+    "infrastructure": {
+      "positiveMatches": {},
+      "negativeMatches": {},
+      "unconditionalClasses": []
+    },
+    "application": {
+      "parentId": "infrastructure",
+      "positiveMatches": {},
+      "negativeMatches": {
+        "example.PaymentModeCondition": {
+          "matched": [],
+          "notMatched": [
+            {
+              "condition": "example.PaymentModeCondition",
+              "message": "AnyNestedCondition 0 matched 2 did not; NestedCondition on example.PaymentModeCondition.Card AllNestedConditions 0 matched 1 did not; NestedCondition on example.PaymentModeCondition.Card.Enabled @ConditionalOnProperty (card.enabled=true) did not find property 'enabled'; NestedCondition on example.PaymentModeCondition.Remote NoneNestedConditions 1 matched 0 did not; NestedCondition on example.PaymentModeCondition.Remote.Client @ConditionalOnBean (types: example.RemoteClient; SearchStrategy: all) found bean 'remoteClient'"
+            }
+          ]
+        }
+      },
+      "unconditionalClasses": []
+    }
+  }
+}

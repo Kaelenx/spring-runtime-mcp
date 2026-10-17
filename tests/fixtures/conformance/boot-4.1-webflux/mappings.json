@@ -1,0 +1,40 @@
+{
+  "contexts": {
+    "application": {
+      "mappings": {
+        "dispatcherHandlers": {
+          "webHandler": [
+            {
+              "handler": "example.OrderController#list",
+              "predicate": "{GET /orders}",
+              "details": {
+                "handlerMethod": {
+                  "className": "example.OrderController",
+                  "name": "list",
+                  "descriptor": "(Lorg/springframework/web/server/ServerWebExchange;)Lreactor/core/publisher/Mono;"
+                },
+                "requestMappingConditions": {
+                  "methods": [
+                    "GET"
+                  ],
+                  "patterns": [
+                    "/orders"
+                  ],
+                  "headers": [],
+                  "params": [],
+                  "consumes": [],
+                  "produces": [
+                    {
+                      "mediaType": "application/json",
+                      "negated": false
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

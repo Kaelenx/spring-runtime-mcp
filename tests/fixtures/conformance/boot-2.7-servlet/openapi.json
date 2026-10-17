@@ -1,0 +1,54 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Synthetic Orders",
+    "version": "1"
+  },
+  "paths": {
+    "/orders": {
+      "get": {
+        "operationId": "listOrders",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Order": {
+        "type": "object",
+        "properties": {
+          "customer": {
+            "$ref": "#/components/schemas/Customer"
+          }
+        }
+      },
+      "Customer": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/Address"
+          }
+        }
+      },
+      "Address": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

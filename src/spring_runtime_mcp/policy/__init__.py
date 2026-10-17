@@ -1,0 +1,1 @@
+"""Mandatory output safety controls."""

@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "2",
+  "status": "ok",
+  "source": {
+    "targetId": "local",
+    "snapshotId": "fixture-snapshot",
+    "observedAt": "2026-10-16T00:00:00Z",
+    "endpointIds": [
+      "health"
+    ],
+    "bootVersion": null,
+    "adapterVersion": "fixture-1",
+    "policyVersion": "fixture-1"
+  },
+  "data": {
+    "overallStatus": "DOWN",
+    "activeGroup": "application",
+    "items": [
+      {
+        "id": "item_1",
+        "endpointId": "health",
+        "observationId": "fixture_observation",
+        "componentPath": [
+          "db"
+        ],
+        "parentId": null,
+        "status": "DOWN",
+        "details": [
+          {
+            "name": "database",
+            "value": "H2"
+          }
+        ],
+        "errorType": "java.sql.SQLException",
+        "remediationCodes": [
+          "REVIEW_DATABASE_CONNECTIVITY"
+        ],
+        "childrenComplete": true
+      }
+    ]
+  },
+  "totalMatched": 1,
+  "truncated": false,
+  "truncationReasons": [],
+  "coverage": {
+    "state": "complete",
+    "scope": "contract_fixture",
+    "gaps": []
+  },
+  "warnings": [],
+  "redactions": [],
+  "nextCursor": null,
+  "nextAction": {
+    "kind": "done",
+    "reasonCode": "COMPLETE",
+    "filterSuggestions": []
+  },
+  "errors": []
+}

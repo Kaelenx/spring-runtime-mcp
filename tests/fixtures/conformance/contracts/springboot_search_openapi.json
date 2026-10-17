@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "2",
+  "status": "partial",
+  "source": {
+    "targetId": "local",
+    "snapshotId": "fixture-snapshot",
+    "observedAt": "2026-10-16T00:00:00Z",
+    "endpointIds": [
+      "openapi"
+    ],
+    "bootVersion": null,
+    "adapterVersion": "fixture-1",
+    "policyVersion": "fixture-1"
+  },
+  "data": {
+    "openapiVersion": "3.0.3",
+    "candidateId": "default",
+    "items": [
+      {
+        "id": "item_1",
+        "endpointId": "openapi",
+        "observationId": "fixture_observation",
+        "kind": "operation",
+        "path": "/orders",
+        "httpMethod": "GET",
+        "operationId": "listOrders",
+        "schemaName": null,
+        "parameters": [],
+        "requestBody": [],
+        "responses": [
+          {
+            "status": "200",
+            "mediaType": "application/json",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "customer": {
+                  "type": "object",
+                  "properties": {
+                    "address": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "schema": null,
+        "expansionComplete": false
+      }
+    ]
+  },
+  "totalMatched": 1,
+  "truncated": true,
+  "truncationReasons": [
+    "REF_DEPTH_LIMIT"
+  ],
+  "coverage": {
+    "state": "partial",
+    "scope": "contract_fixture",
+    "gaps": [
+      "REF_DEPTH_LIMIT"
+    ]
+  },
+  "warnings": [],
+  "redactions": [],
+  "nextCursor": null,
+  "nextAction": {
+    "kind": "refine",
+    "reasonCode": "REF_DEPTH_LIMIT",
+    "filterSuggestions": [
+      {
+        "parameter": "schemaName",
+        "value": "Address"
+      }
+    ]
+  },
+  "errors": []
+}

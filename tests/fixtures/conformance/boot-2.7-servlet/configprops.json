@@ -1,0 +1,20 @@
+{
+  "contexts": {
+    "application": {
+      "beans": {
+        "spring.application-example.ApplicationProperties": {
+          "prefix": "spring.application",
+          "properties": {
+            "name": "orders"
+          },
+          "inputs": {
+            "name": {
+              "value": "orders",
+              "origin": "class path resource [application.yaml] - 2:9"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "2",
+  "status": "ok",
+  "source": {
+    "targetId": "local",
+    "snapshotId": "fixture-snapshot",
+    "observedAt": "2026-10-16T00:00:00Z",
+    "endpointIds": [
+      "beans"
+    ],
+    "bootVersion": null,
+    "adapterVersion": "fixture-1",
+    "policyVersion": "fixture-1"
+  },
+  "data": {
+    "items": [
+      {
+        "id": "item_1",
+        "endpointId": "beans",
+        "observationId": "fixture_observation",
+        "contextId": "application",
+        "parentContextId": "infrastructure",
+        "name": "orderService",
+        "type": "example.OrderService",
+        "scope": "singleton",
+        "resource": "classpath:example/OrderService.class",
+        "aliases": [],
+        "producer": null,
+        "dependencies": [],
+        "dependents": []
+      }
+    ],
+    "missingBeanAnalysis": {
+      "state": "notNeeded",
+      "conditions": [],
+      "blockingPaths": []
+    }
+  },
+  "totalMatched": 1,
+  "truncated": false,
+  "truncationReasons": [],
+  "coverage": {
+    "state": "complete",
+    "scope": "contract_fixture",
+    "gaps": []
+  },
+  "warnings": [],
+  "redactions": [],
+  "nextCursor": null,
+  "nextAction": {
+    "kind": "done",
+    "reasonCode": "COMPLETE",
+    "filterSuggestions": []
+  },
+  "errors": []
+}

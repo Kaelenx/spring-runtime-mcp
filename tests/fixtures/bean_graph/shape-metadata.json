@@ -1,0 +1,32 @@
+{
+  "provenance": "synthetic",
+  "sanitized": true,
+  "realInstanceIntegrationVerified": false,
+  "scenarios": [
+    "parent-child",
+    "stripe-missing",
+    "factory-method",
+    "nested-conditions"
+  ],
+  "shapeProfiles": [
+    {
+      "bootFamily": "2.7",
+      "actuatorRepresentation": "v3",
+      "namespace": "javax",
+      "integrationVerified": false
+    },
+    {
+      "bootFamily": "3.x",
+      "actuatorRepresentation": "v3",
+      "namespace": "jakarta",
+      "integrationVerified": false
+    },
+    {
+      "bootFamily": "4.x",
+      "actuatorRepresentation": "v3",
+      "namespace": "jakarta",
+      "integrationVerified": false
+    }
+  ],
+  "notice": "Shared structural examples only. Metadata does not establish exact-version compatibility or report an observed Boot version."
+}

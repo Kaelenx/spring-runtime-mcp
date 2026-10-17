@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "2",
+  "status": "ok",
+  "source": {
+    "targetId": "local",
+    "snapshotId": "fixture-snapshot",
+    "observedAt": "2026-10-16T00:00:00Z",
+    "endpointIds": [
+      "startup"
+    ],
+    "bootVersion": null,
+    "adapterVersion": "fixture-1",
+    "policyVersion": "fixture-1"
+  },
+  "data": {
+    "springBootVersion": "3.4.13",
+    "totalDurationMs": 900,
+    "durationBasis": "timelineSpan",
+    "timelineComplete": true,
+    "items": [
+      {
+        "id": "item_1",
+        "endpointId": "startup",
+        "observationId": "fixture_observation",
+        "stepId": "2",
+        "parentStepId": "1",
+        "name": "spring.beans.instantiate",
+        "startedAt": "2026-10-16T00:00:00.100Z",
+        "durationNanos": "700000000",
+        "durationMs": 700,
+        "tags": [
+          {
+            "key": "beanName",
+            "value": "orderService"
+          }
+        ],
+        "ancestorIds": [
+          "1"
+        ],
+        "relationState": "resolved",
+        "bottleneckCode": "BEAN_INSTANTIATION"
+      }
+    ]
+  },
+  "totalMatched": 1,
+  "truncated": false,
+  "truncationReasons": [],
+  "coverage": {
+    "state": "complete",
+    "scope": "contract_fixture",
+    "gaps": []
+  },
+  "warnings": [],
+  "redactions": [],
+  "nextCursor": null,
+  "nextAction": {
+    "kind": "done",
+    "reasonCode": "COMPLETE",
+    "filterSuggestions": []
+  },
+  "errors": []
+}

@@ -1,0 +1,691 @@
+{
+  "scope": "All Python production modules; test and maintenance CLIs are listed separately in the report",
+  "modules": [
+    {
+      "path": "src/spring_runtime_mcp/__init__.py",
+      "sha256": "bec580165890414b6c4b5c7b708d197ff5011ebd410c95c1825dbbaf47bd2948",
+      "definitions": [],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/adapters/__init__.py",
+      "sha256": "0b088b5e04497a4682dd96f6687a66f600e51a1eea5542addcfe49d8a998b9e1",
+      "definitions": [],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/adapters/beans.py",
+      "sha256": "1a819047eab56ae6e1c59e2c5161f0e87a24bebb17bbf336668400373dfbfc48",
+      "definitions": [
+        {
+          "name": "_text",
+          "line": 18
+        },
+        {
+          "name": "_fact",
+          "line": 22
+        },
+        {
+          "name": "normalize_beans",
+          "line": 29
+        }
+      ],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/adapters/conditions.py",
+      "sha256": "102ce8fec1b0a7a26f6ac3882f6d9660d357af15d3c07d3c8652e104dd9a3135",
+      "definitions": [
+        {
+          "name": "combine",
+          "line": 22
+        },
+        {
+          "name": "_leaf",
+          "line": 41
+        },
+        {
+          "name": "normalize_conditions",
+          "line": 118
+        },
+        {
+          "name": "normalize_conditions.parse",
+          "line": 128
+        }
+      ],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/adapters/source_catalog.py",
+      "sha256": "65a75d4bf7885be4839a007d1bc4626e83cd16271916aae270a86e3c0f86375f",
+      "definitions": [
+        {
+          "name": "_text",
+          "line": 16
+        },
+        {
+          "name": "_strings",
+          "line": 22
+        },
+        {
+          "name": "load_source_catalog",
+          "line": 28
+        },
+        {
+          "name": "load_source_catalog.optional",
+          "line": 88
+        }
+      ],
+      "boundaryCalls": [
+        {
+          "name": "json.dumps",
+          "line": 37
+        }
+      ]
+    },
+    {
+      "path": "src/spring_runtime_mcp/analyzers/__init__.py",
+      "sha256": "b98450f622c3f70cba1d6978724f44d15c35f853d4a3f7699199ad4051c36277",
+      "definitions": [],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/analyzers/bean_graph.py",
+      "sha256": "58ee0d41ad7ba96126fc8e90fee5ca99864b9ad0bf298c030e35824bc7c1bf34",
+      "definitions": [
+        {
+          "name": "resolve_bean_reference",
+          "line": 18
+        },
+        {
+          "name": "build_dependency_graph",
+          "line": 43
+        },
+        {
+          "name": "slice_dependencies",
+          "line": 73
+        }
+      ],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/analyzers/condition_failures.py",
+      "sha256": "38f628b5fb28b86ab682512d21c3f73afda2df6681624fa2d64667a7c80ea428",
+      "definitions": [
+        {
+          "name": "is_assignable",
+          "line": 18
+        },
+        {
+          "name": "producer_matches",
+          "line": 53
+        },
+        {
+          "name": "analyze_missing_beans",
+          "line": 93
+        },
+        {
+          "name": "analyze_missing_beans.visible",
+          "line": 118
+        },
+        {
+          "name": "analyze_missing_beans.producer_roots",
+          "line": 141
+        },
+        {
+          "name": "analyze_missing_beans.add_edge",
+          "line": 151
+        },
+        {
+          "name": "analyze_missing_beans.visit",
+          "line": 156
+        }
+      ],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/contracts/__init__.py",
+      "sha256": "b57baf11347987d9226568827e0c8e975a781e6a800ba25b3689761e58cc4270",
+      "definitions": [],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/contracts/definitions.py",
+      "sha256": "865a134315af0eaa01d1be85301112f7340f509881925c770053328de5617f32",
+      "definitions": [
+        {
+          "name": "_definitions",
+          "line": 20
+        },
+        {
+          "name": "list_tools",
+          "line": 31
+        },
+        {
+          "name": "definition",
+          "line": 36
+        },
+        {
+          "name": "_matches",
+          "line": 43
+        },
+        {
+          "name": "validate_arguments",
+          "line": 106
+        },
+        {
+          "name": "glob_matches",
+          "line": 154
+        }
+      ],
+      "boundaryCalls": [
+        {
+          "name": "json.loads",
+          "line": 22
+        },
+        {
+          "name": "path.read_text",
+          "line": 22
+        },
+        {
+          "name": "json.dumps",
+          "line": 123
+        }
+      ]
+    },
+    {
+      "path": "src/spring_runtime_mcp/models/__init__.py",
+      "sha256": "9b85873edb235704161cfa68da787dcf2c09d26e9fdb15d29ede261eac069f39",
+      "definitions": [],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/models/bean_graph.py",
+      "sha256": "9830f785c5e867e7f4885e1dd454606bfa7d1137664746650bec902bb9c47657",
+      "definitions": [],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/models/common.py",
+      "sha256": "189aa7d46e83d6ee26466732908595caa165513e5a729c027e1f828c81e3aca4",
+      "definitions": [
+        {
+          "name": "NormalizationError.__init__",
+          "line": 14
+        },
+        {
+          "name": "AnalysisLimit.__init__",
+          "line": 22
+        },
+        {
+          "name": "AnalysisBudget.consume",
+          "line": 41
+        }
+      ],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/models/conditions.py",
+      "sha256": "ac261d2ba8fb6f22060536e83dbcb691b0312269484e0e67a7f827c3c831effa",
+      "definitions": [],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/models/queries.py",
+      "sha256": "d654a80b2622ca709e1bfaf6ef6205cc9a043725064d7933eefd8610eb9788d4",
+      "definitions": [],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/models/source_catalog.py",
+      "sha256": "029f9bce5ff212503bc23a084ba15b047eca4e58fea17f9f9e174cb7bde5e447",
+      "definitions": [],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/policy/__init__.py",
+      "sha256": "743774c7dbcd37773d38df3cfbaca55c2c31b944172e85485c6467584fcb778b",
+      "definitions": [],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/policy/output_guard.py",
+      "sha256": "74bde4dd83239772cad93846fcf1761356b71af3914282a83def87824691e74c",
+      "definitions": [
+        {
+          "name": "ensure_safe_output",
+          "line": 31
+        }
+      ],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/policy/sanitization.py",
+      "sha256": "07cba042c1a4b7d097553f35072f4f244956dce47642d033462faad6a99a5b22",
+      "definitions": [
+        {
+          "name": "sensitive_key",
+          "line": 60
+        },
+        {
+          "name": "SanitizerPipeline.__init__",
+          "line": 67
+        },
+        {
+          "name": "SanitizerPipeline.high_risk",
+          "line": 88
+        },
+        {
+          "name": "SanitizerPipeline.identifier",
+          "line": 170
+        },
+        {
+          "name": "SanitizerPipeline.resource",
+          "line": 179
+        },
+        {
+          "name": "SanitizerPipeline.sanitize",
+          "line": 204
+        },
+        {
+          "name": "SanitizerPipeline.sanitize.walk",
+          "line": 232
+        },
+        {
+          "name": "SanitizerPipeline.sanitize.markers",
+          "line": 317
+        }
+      ],
+      "boundaryCalls": [
+        {
+          "name": "json.dumps",
+          "line": 76
+        },
+        {
+          "name": "json.dumps",
+          "line": 295
+        }
+      ]
+    },
+    {
+      "path": "src/spring_runtime_mcp/replay.py",
+      "sha256": "e5ddbdd7f7af9b6f8088d41fad130b9c1c1e7ea840443e962b097b8e5e81c47e",
+      "definitions": [
+        {
+          "name": "FixtureReader.__init__",
+          "line": 26
+        },
+        {
+          "name": "FixtureReader.read",
+          "line": 30
+        },
+        {
+          "name": "services_for",
+          "line": 49
+        },
+        {
+          "name": "SafeArgumentParser.error",
+          "line": 80
+        },
+        {
+          "name": "main",
+          "line": 85
+        }
+      ],
+      "boundaryCalls": [
+        {
+          "name": "read_fixture",
+          "line": 60
+        },
+        {
+          "name": "read_fixture",
+          "line": 63
+        },
+        {
+          "name": "read_fixture",
+          "line": 67
+        },
+        {
+          "name": "serialize_response",
+          "line": 127
+        },
+        {
+          "name": "serialize_response",
+          "line": 129
+        },
+        {
+          "name": "os.write",
+          "line": 135
+        }
+      ]
+    },
+    {
+      "path": "src/spring_runtime_mcp/snapshots.py",
+      "sha256": "16e436be42a2b985d27041c4c816395788b3a64170de65254cf5fe140b269f3f",
+      "definitions": [
+        {
+          "name": "SnapshotStore.__init__",
+          "line": 29
+        },
+        {
+          "name": "SnapshotStore._digest",
+          "line": 45
+        },
+        {
+          "name": "SnapshotStore._remove",
+          "line": 57
+        },
+        {
+          "name": "SnapshotStore._prune",
+          "line": 60
+        },
+        {
+          "name": "SnapshotStore.put",
+          "line": 66
+        },
+        {
+          "name": "SnapshotStore.get",
+          "line": 98
+        }
+      ],
+      "boundaryCalls": [
+        {
+          "name": "json.dumps",
+          "line": 48
+        },
+        {
+          "name": "ensure_safe_output",
+          "line": 74
+        },
+        {
+          "name": "json.dumps",
+          "line": 76
+        },
+        {
+          "name": "json.loads",
+          "line": 113
+        },
+        {
+          "name": "ensure_safe_output",
+          "line": 115
+        }
+      ]
+    },
+    {
+      "path": "src/spring_runtime_mcp/tools/__init__.py",
+      "sha256": "f43893541d85826a2e4d567d166f0be7a4122f154f53786de15a6476b320b1af",
+      "definitions": [],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/tools/inspect_beans.py",
+      "sha256": "969bbd479a26950353e61d3e64010f418bb48251a38985478b32868fdf579a83",
+      "definitions": [
+        {
+          "name": "safe_code",
+          "line": 46
+        },
+        {
+          "name": "RuntimeReader.read",
+          "line": 55
+        },
+        {
+          "name": "error",
+          "line": 69
+        },
+        {
+          "name": "envelope",
+          "line": 130
+        },
+        {
+          "name": "partial",
+          "line": 171
+        },
+        {
+          "name": "failed",
+          "line": 183
+        },
+        {
+          "name": "_check",
+          "line": 216
+        },
+        {
+          "name": "_page",
+          "line": 248
+        },
+        {
+          "name": "inspect_beans",
+          "line": 326
+        },
+        {
+          "name": "_failure",
+          "line": 591
+        }
+      ],
+      "boundaryCalls": [
+        {
+          "name": "serialize_response",
+          "line": 288
+        },
+        {
+          "name": "services.snapshots.put",
+          "line": 317
+        },
+        {
+          "name": "serialize_response",
+          "line": 322
+        },
+        {
+          "name": "services.snapshots.get",
+          "line": 339
+        },
+        {
+          "name": "_check",
+          "line": 354
+        },
+        {
+          "name": "_check",
+          "line": 535
+        }
+      ]
+    },
+    {
+      "path": "src/spring_runtime_mcp/transport/__init__.py",
+      "sha256": "4ade89969464ec44e1bb532cded859c54f852affcf914a5f3ab133f0ed5c699f",
+      "definitions": [],
+      "boundaryCalls": []
+    },
+    {
+      "path": "src/spring_runtime_mcp/transport/bounded_json.py",
+      "sha256": "a1dd80f69a39cbb701036022fa4e3a812fc46f55d9d5974951ff42d5059cf6b4",
+      "definitions": [
+        {
+          "name": "_pairs",
+          "line": 12
+        },
+        {
+          "name": "_constant",
+          "line": 21
+        },
+        {
+          "name": "_integer",
+          "line": 25
+        },
+        {
+          "name": "loads_bounded",
+          "line": 33
+        },
+        {
+          "name": "validate_tree",
+          "line": 88
+        }
+      ],
+      "boundaryCalls": [
+        {
+          "name": "json.loads",
+          "line": 73
+        },
+        {
+          "name": "json.dumps",
+          "line": 121
+        },
+        {
+          "name": "json.dumps",
+          "line": 136
+        }
+      ]
+    },
+    {
+      "path": "src/spring_runtime_mcp/transport/fixture_files.py",
+      "sha256": "94184c8e03150b74d87829290f0bbddb99001e0e619fd2cd2ae938eca0c54e92",
+      "definitions": [
+        {
+          "name": "read_fixture",
+          "line": 12
+        }
+      ],
+      "boundaryCalls": [
+        {
+          "name": "os.open",
+          "line": 27
+        },
+        {
+          "name": "os.open",
+          "line": 33
+        },
+        {
+          "name": "os.open",
+          "line": 41
+        },
+        {
+          "name": "os.open",
+          "line": 47
+        },
+        {
+          "name": "os.read",
+          "line": 57
+        },
+        {
+          "name": "os.close",
+          "line": 69
+        }
+      ]
+    },
+    {
+      "path": "src/spring_runtime_mcp/transport/response_gate.py",
+      "sha256": "7a5eb78f604eafa7842a028d4068f4da05ddf0f92a2ee8404d799991966ec8de",
+      "definitions": [
+        {
+          "name": "EndpointReadError.__init__",
+          "line": 36
+        },
+        {
+          "name": "RegisteredTransport.request",
+          "line": 52
+        },
+        {
+          "name": "ResponseGateReader.__post_init__",
+          "line": 72
+        },
+        {
+          "name": "ResponseGateReader.read",
+          "line": 86
+        }
+      ],
+      "boundaryCalls": [
+        {
+          "name": "self.transport.request",
+          "line": 95
+        }
+      ]
+    },
+    {
+      "path": "src/spring_runtime_mcp/transport/responses.py",
+      "sha256": "9d5148cd8bb91ca5db9add20ab360347e9dc368048886c5e8b83c6218f47581b",
+      "definitions": [
+        {
+          "name": "serialize_response",
+          "line": 16
+        }
+      ],
+      "boundaryCalls": [
+        {
+          "name": "json.dumps",
+          "line": 32
+        },
+        {
+          "name": "json.dumps",
+          "line": 49
+        },
+        {
+          "name": "ensure_safe_output",
+          "line": 62
+        }
+      ]
+    },
+    {
+      "path": "src/spring_runtime_mcp/transport/stdio.py",
+      "sha256": "ce129dfa6b2fe6fa6e449ac90473b85a8726435a56183b94b1ee02fd3b59fda9",
+      "definitions": [
+        {
+          "name": "quiet_console",
+          "line": 12
+        },
+        {
+          "name": "seal_console",
+          "line": 40
+        }
+      ],
+      "boundaryCalls": [
+        {
+          "name": "os.dup",
+          "line": 18
+        },
+        {
+          "name": "os.dup",
+          "line": 18
+        },
+        {
+          "name": "open",
+          "line": 21
+        },
+        {
+          "name": "os.dup2",
+          "line": 22
+        },
+        {
+          "name": "os.dup2",
+          "line": 23
+        },
+        {
+          "name": "os.dup2",
+          "line": 34
+        },
+        {
+          "name": "os.dup2",
+          "line": 35
+        },
+        {
+          "name": "os.close",
+          "line": 36
+        },
+        {
+          "name": "os.close",
+          "line": 37
+        },
+        {
+          "name": "open",
+          "line": 42
+        },
+        {
+          "name": "os.dup2",
+          "line": 43
+        },
+        {
+          "name": "os.dup2",
+          "line": 44
+        }
+      ]
+    }
+  ]
+}

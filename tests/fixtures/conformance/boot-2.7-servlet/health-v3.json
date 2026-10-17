@@ -1,0 +1,38 @@
+{
+  "status": "DOWN",
+  "components": {
+    "db": {
+      "status": "DOWN",
+      "details": {
+        "database": "H2",
+        "error": "java.sql.SQLException: synthetic connection unavailable"
+      }
+    },
+    "redis": {
+      "status": "UP"
+    },
+    "kafka": {
+      "status": "UP"
+    },
+    "rabbit": {
+      "status": "UP"
+    },
+    "diskSpace": {
+      "status": "UP"
+    },
+    "livenessState": {
+      "status": "UP"
+    },
+    "readinessState": {
+      "status": "DOWN"
+    },
+    "dependencies": {
+      "status": "DOWN",
+      "components": {
+        "ordersDb": {
+          "status": "DOWN"
+        }
+      }
+    }
+  }
+}

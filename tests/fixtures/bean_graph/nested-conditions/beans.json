@@ -1,0 +1,99 @@
+{
+  "contexts": {
+    "infrastructure": {
+      "beans": {
+        "connectionFactory": {
+          "aliases": [],
+          "scope": "singleton",
+          "type": "example.ConnectionFactory",
+          "resource": "class path resource [example/InfrastructureConfiguration.class]",
+          "dependencies": []
+        },
+        "dataSource": {
+          "aliases": [],
+          "scope": "singleton",
+          "type": "example.DataSource",
+          "resource": "class path resource [example/InfrastructureConfiguration.class]",
+          "dependencies": [
+            "connectionFactory"
+          ]
+        },
+        "orderRepository": {
+          "aliases": [
+            "orderRepoAlias"
+          ],
+          "scope": "singleton",
+          "type": "example.OrderRepository",
+          "resource": "class path resource [example/InfrastructureConfiguration.class]",
+          "dependencies": [
+            "dataSource"
+          ]
+        },
+        "client": {
+          "aliases": [],
+          "scope": "singleton",
+          "type": "example.ParentClient",
+          "resource": null,
+          "dependencies": []
+        },
+        "auditService": {
+          "aliases": [],
+          "scope": "singleton",
+          "type": "example.AuditService",
+          "resource": null,
+          "dependencies": [
+            "client"
+          ]
+        }
+      },
+      "parentId": null
+    },
+    "application": {
+      "parentId": "infrastructure",
+      "beans": {
+        "client": {
+          "aliases": [],
+          "scope": "singleton",
+          "type": "example.ChildClient",
+          "resource": null,
+          "dependencies": []
+        },
+        "orderService": {
+          "aliases": [
+            "orders"
+          ],
+          "scope": "singleton",
+          "type": "example.OrderService",
+          "resource": null,
+          "dependencies": [
+            "orderRepoAlias",
+            "client"
+          ]
+        },
+        "orderController": {
+          "aliases": [],
+          "scope": "singleton",
+          "type": "example.OrderController",
+          "resource": null,
+          "dependencies": [
+            "orders"
+          ]
+        },
+        "stripeConfiguration": {
+          "aliases": [],
+          "scope": "singleton",
+          "type": "example.StripeConfiguration",
+          "resource": null,
+          "dependencies": []
+        },
+        "remoteClient": {
+          "aliases": [],
+          "scope": "singleton",
+          "type": "example.RemoteClient",
+          "resource": null,
+          "dependencies": []
+        }
+      }
+    }
+  }
+}

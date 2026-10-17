@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "2",
+  "status": "ok",
+  "source": {
+    "targetId": "local",
+    "snapshotId": "fixture-snapshot",
+    "observedAt": "2026-10-16T00:00:00Z",
+    "endpointIds": [
+      "flyway"
+    ],
+    "bootVersion": null,
+    "adapterVersion": "fixture-1",
+    "policyVersion": "fixture-1"
+  },
+  "data": {
+    "pendingVisibility": "unknown",
+    "items": [
+      {
+        "id": "item_1",
+        "endpointId": "flyway",
+        "observationId": "fixture_observation",
+        "contextId": "application",
+        "parentContextId": null,
+        "engine": "flyway",
+        "migrationBean": "ordersFlyway",
+        "identity": "ordersFlyway:1",
+        "script": "V1__create_tables.sql",
+        "changeLog": null,
+        "changeSetId": null,
+        "author": null,
+        "version": "1",
+        "description": null,
+        "checksum": "12345",
+        "checksumType": "number",
+        "checksumAlgorithm": null,
+        "executionTimeMs": 12,
+        "orderExecuted": 1,
+        "executedAt": "2026-10-16T00:00:00Z",
+        "rawState": "SUCCESS",
+        "state": "APPLIED",
+        "stateEvidence": "reported",
+        "attentionRequired": false
+      }
+    ]
+  },
+  "totalMatched": 1,
+  "truncated": false,
+  "truncationReasons": [],
+  "coverage": {
+    "state": "complete",
+    "scope": "contract_fixture",
+    "gaps": []
+  },
+  "warnings": [],
+  "redactions": [],
+  "nextCursor": null,
+  "nextAction": {
+    "kind": "done",
+    "reasonCode": "COMPLETE",
+    "filterSuggestions": []
+  },
+  "errors": []
+}

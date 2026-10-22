@@ -10,7 +10,7 @@
 - 增加本地受信 `--token-env` Bearer 绑定，限制令牌格式并纳入已知秘密脱敏；不增加任意头透传或 Basic 支持，不改变工具公开 Schema、运行依赖或回环边界。
 - 明确批准后，针对 `<TDD checkout>` 的已提交 S8 副本完成 Boot 3.5.16 / Java 21 / MVC / JWT / 临时 PostgreSQL 16 验收。TDD 原工作区保留未完成业务代码，只新增已批准的可选 Actuator Maven profile。六个诊断端点均只读，匿名拒绝，环境和配置值端点关闭；结果见 [Shop 摘要](examples/tdd-runtime/verification.json)。这不代表全版本矩阵或 TDD 当前红阶段业务已完成。
 - 离线全量 **782 passed**，mypy 51 文件、Ruff、八工具契约、wheel/sdist 构建及安装验证通过。
-- 交付审计追加修复：drift 在 startup 证据缺失时返回显式 `STARTUP_EVIDENCE_UNAVAILABLE` 而不是 `ok`；mappings 对不可读 patterns/methods 标记 partial 并禁止伪造 unrestricted；Bean 缺失类型/scope、health details/startup tags 截断、迁移预算耗尽及 date-time 输出契约均显式标注；配置诊断新增 `--config-prefix/--config-property/--config-profiles/--config-allow-values`；replay fixtures 随包分发，安装 wheel 后可重放。
+- 交付审计追加修复：drift 在 startup 证据缺失时返回显式 `STARTUP_EVIDENCE_UNAVAILABLE` 而不是 `ok`；mappings 对不可读 patterns/methods 标记 partial 并禁止伪造 unrestricted；Bean 缺失类型/scope、health details/startup tags 截断、迁移预算耗尽及 date-time 输出契约均显式标注；配置诊断新增 `--config-prefix/--config-property/--config-profiles/--config-allow-values`；replay fixtures 随包分发，安装 wheel 后可重放。修复与验证证据见 [交付审计修复与验证](docs/audits/delivery-audit-remediation-2026-10-22.md)。
 
 ## v0.2.0 — 2026-10-22
 

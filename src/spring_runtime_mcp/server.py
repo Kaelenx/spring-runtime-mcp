@@ -5,26 +5,34 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import time
+from dataclasses import replace
+from datetime import datetime
 from typing import Any, TextIO
 
 import mcp.types as types
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import ValidationError
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 from mcp.shared.exceptions import MCPError
+from mcp.shared.message import SessionMessage
 
 from . import __version__
 from .contracts.definitions import list_tools
 from .models.source_catalog import SourceCatalog
+from .models.common import CALL_BUDGET, CallBudget, NormalizationError
 from .policy.sanitization import SanitizerPipeline
 from .policy.configuration import ConfigReadPolicy
 from .snapshots import SnapshotStore
-from .tools.inspect_beans import Services, failed
+from .services import Services
+from .diagnostics import failed
 from .tools.registry import HANDLERS, call_tool
+from .tools.support import TOOL_TIMEOUT_SECONDS
 from .transport.actuator_http import ActuatorHttpTransport
 from .transport.response_gate import ENDPOINTS, ResponseGateReader
 from .transport.responses import serialize_response, tool_result
+from .transport.responses import MAX_RESPONSE_BYTES, _check_request_id
 
 MAX_FRAME_BYTES = 64 * 1024
 SERVER_NAME = "spring-runtime-mcp"
@@ -37,6 +45,20 @@ SERVER_INFO_META: dict[str, Any] = {
         "version": SERVER_VERSION,
     }
 }
+_FORMAT_CHECKER = FormatChecker()
+
+
+def _is_rfc3339(value: object) -> bool:
+    if not isinstance(value, str):
+        return True
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None
+
+
+_FORMAT_CHECKER.checkers["date-time"] = (_is_rfc3339, ())
 
 
 def build_services(
@@ -46,10 +68,13 @@ def build_services(
     *,
     config_policy: ConfigReadPolicy | None = None,
     source_catalog: SourceCatalog | None = None,
+    bearer_token: str | None = None,
 ) -> Services:
     """Assemble the real reader. No connection is opened until a tool calls it."""
     targets = frozenset({target_id})
-    transport = ActuatorHttpTransport(base_url, targets=targets)
+    transport = ActuatorHttpTransport(
+        base_url, targets=targets, bearer_token=bearer_token
+    )
     reader = ResponseGateReader(
         transport,
         targets=targets,
@@ -68,7 +93,9 @@ def build_services(
     return Services(
         reader,
         catalog,
-        SanitizerPipeline(),
+        SanitizerPipeline(
+            known_secrets=() if bearer_token is None else (bearer_token,)
+        ),
         SnapshotStore(),
         targets=targets,
         config_policy=config_policy,
@@ -83,7 +110,7 @@ def _valid_envelope(schema: dict[str, Any], envelope: object) -> bool:
     if not isinstance(envelope, dict):
         return False
     try:
-        Draft202012Validator(schema).validate(envelope)
+        Draft202012Validator(schema, format_checker=_FORMAT_CHECKER).validate(envelope)
     except ValidationError:
         return False
     return True
@@ -99,7 +126,9 @@ async def _call_tool(
         # Unknown names are protocol errors, not tool execution results.
         raise MCPError(-32602, "UNKNOWN_TOOL")
     try:
-        Draft202012Validator(catalog[name]["inputSchema"]).validate(arguments)
+        Draft202012Validator(
+            catalog[name]["inputSchema"], format_checker=_FORMAT_CHECKER
+        ).validate(arguments)
     except ValidationError:
         return _result(failed("INVALID_ARGUMENT"), params_id(ctx))
     if name not in HANDLERS:
@@ -126,11 +155,21 @@ def params_id(ctx: Any) -> str | int | None:
 def _result(
     envelope: dict[str, Any], request_id: str | int | None
 ) -> types.CallToolResult:
+    fallback_id = request_id
     try:
         # Enforce the full-frame budget, server stamp included.
         serialize_response(envelope, request_id, server_meta=SERVER_INFO_META)
+    except NormalizationError as exc:
+        # Preserve the real rejection reason; an unsafe/sanitization failure is
+        # not the same failure as an oversized frame. An invalid identity cannot
+        # be echoed, so the safe fallback uses a null id.
+        envelope = failed(exc.code)
+        if exc.code == "INVALID_REQUEST_ID":
+            fallback_id = None
+        serialize_response(envelope, fallback_id, server_meta=SERVER_INFO_META)
     except Exception:
-        envelope = failed("RESPONSE_TOO_LARGE")
+        envelope = failed("INTERNAL_ERROR")
+        serialize_response(envelope, fallback_id, server_meta=SERVER_INFO_META)
     return types.CallToolResult.model_validate(tool_result(envelope), by_alias=True)
 
 
@@ -144,7 +183,20 @@ def build_server(services: Services) -> Server[Services]:
     async def call_tool_handler(
         ctx: Any, params: types.CallToolRequestParams
     ) -> types.CallToolResult:
-        return await _call_tool(ctx, params, services)
+        scope = CallBudget(time.monotonic() + TOOL_TIMEOUT_SECONDS)
+        token = CALL_BUDGET.set(scope)
+        try:
+            async with asyncio.timeout(scope.check()):
+                result = await _call_tool(ctx, params, services)
+                scope.check()
+                return result
+        except (TimeoutError, NormalizationError):
+            # Expired scopes cannot be used while serializing the safe fallback.
+            CALL_BUDGET.reset(token)
+            token = CALL_BUDGET.set(None)
+            return _result(failed("TARGET_TIMEOUT"), params_id(ctx))
+        finally:
+            CALL_BUDGET.reset(token)
 
     return Server(
         SERVER_NAME,
@@ -161,6 +213,7 @@ class _BoundedLineReader:
         self._binary = binary
         self._limit = limit
         self.oversized = False
+        self.invalid_identity = False
 
     def readline(self, size: int = -1) -> str:
         line = self._binary.readline(self._limit + 1)
@@ -168,6 +221,15 @@ class _BoundedLineReader:
             self.oversized = True
             return ""
         decoded: str = line.decode("utf-8", errors="replace")
+        try:
+            message = json.loads(decoded)
+            identifier = message.get("id") if isinstance(message, dict) else None
+            if type(identifier) in (str, int):
+                _check_request_id(identifier)
+        except (ValueError, UnicodeError, RecursionError) as exc:
+            if isinstance(exc, NormalizationError):
+                self.invalid_identity = True
+                return ""
         return decoded
 
     async def read_line(self) -> str:
@@ -184,6 +246,57 @@ class _BoundedLineReader:
         return line
 
 
+class _BoundedWriteStream:
+    """Check SDK-serialized tool frames at the last send boundary."""
+
+    def __init__(self, stream: Any) -> None:
+        self._stream = stream
+
+    async def __aenter__(self) -> _BoundedWriteStream:
+        await self._stream.__aenter__()
+        return self
+
+    async def aclose(self) -> None:
+        await self._stream.aclose()
+
+    async def __aexit__(self, *args: Any) -> None:
+        await self._stream.__aexit__(*args)
+
+    async def send(self, item: SessionMessage) -> None:
+        message = item.message
+        if (
+            isinstance(message, types.JSONRPCResponse)
+            and "structuredContent" in message.result
+        ):
+            size = len(
+                message.model_dump_json(by_alias=True, exclude_unset=True).encode(
+                    "utf-8"
+                )
+            )
+            if size > MAX_RESPONSE_BYTES:
+                message = types.JSONRPCResponse(
+                    jsonrpc="2.0",
+                    id=message.id,
+                    result=tool_result(
+                        failed("RESPONSE_TOO_LARGE"), server_meta=SERVER_INFO_META
+                    ),
+                )
+                _check_request_id(message.id)
+                if (
+                    len(
+                        message.model_dump_json(
+                            by_alias=True, exclude_unset=True
+                        ).encode("utf-8")
+                    )
+                    > MAX_RESPONSE_BYTES
+                ):
+                    raise ValueError("RESPONSE_TOO_LARGE")
+                item = replace(item, message=message)
+        # The destination is the SDK's protocol stream, not a socket. Its stdio
+        # writer retains ownership of fd 1 and all JSON-RPC framing.
+        await self._stream.send(item)
+
+
 async def run_stdio(services: Services, stdout: TextIO | None = None) -> None:
     """Serve MCP over the process's stdin/stdout until EOF.
 
@@ -194,9 +307,11 @@ async def run_stdio(services: Services, stdout: TextIO | None = None) -> None:
     server = build_server(services)
     async with stdio_server(stdin=reader) as (read_stream, write_stream):  # type: ignore[arg-type]
         await server.run(
-            read_stream, write_stream, server.create_initialization_options()
+            read_stream,
+            _BoundedWriteStream(write_stream),
+            server.create_initialization_options(),
         )
-    if reader.oversized:
+    if reader.oversized or reader.invalid_identity:
         frame = json.dumps(
             {
                 "jsonrpc": "2.0",

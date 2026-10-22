@@ -2,7 +2,7 @@
 
 这份手册只描述仓库里已经落地的代码。离线测试覆盖八个工具、MCP stdio 宿主和回环 HTTP 连接器；它没有对真实 Spring Boot 进程做过版本矩阵验收。
 
-2026-10-20 交接补充：[项目剩余工作交接](docs/audits/remaining-work-handoff-2026-10-20.md)记录审计修复后的基线、待办优先级、验收标准和未决审批。最近一次全量验证为 705 passed、1 failed；第 3 节记录的 socket 静态禁用规则与新增 IP 固定建连/peer 校验实现存在待审阅冲突，具体状态以交接文档 RW-01 为准。本次仅更新文档，未重新运行测试。
+2026-10-22 交接补充：[综合修复报告](docs/audits/comprehensive-remediation-2026-10-22.md)记录 CR-01 至 CR-13 的关闭证据，当前全量 782 passed。官方 SDK 两种模式的隔离安装和 TDD 已提交副本的 Boot 3.5.16 / Java 21 / MVC / JWT / 临时 PostgreSQL 验收通过；该样本不等于版本矩阵。2026-10-20 的[剩余工作交接](docs/audits/remaining-work-handoff-2026-10-20.md)是历史基线，不覆盖当前状态。
 
 ## 1. 五层调用链
 
@@ -17,6 +17,9 @@ server.py                      官方 mcp SDK lowlevel Server；注册 on_list_t
 tools/registry.py              八个名字按字母序绑定 HANDLERS；未知名字 → UNKNOWN_TOOL
     ▼
 tools/*.py                     校验参数、按维度读端点、组信封、失败则固定错误码
+    │                          共享 diagnostics.py 信封；models/common.py 调用总预算
+    ▼
+services.py                    每目标两个读取槽，排队与多端点读取共用 15 秒 deadline
     ▼
 adapters/*.py + analyzers/     把 Actuator JSON 归一化成事实；不发网络请求
     ▼
@@ -49,7 +52,7 @@ transport/responses.py         structuredContent 与一份文本副本，整帧 
 | 游标续页 | `snapshots.py`；分页入口是 `tools/support.py` 的 `finalize` |
 | 固定样本 | `tests/fixtures/`；`replay.py` 的 `services_for` |
 
-依赖方向不要反过来。adapter 不能自己 new HTTP 客户端。工具不能把用户字符串拼进 URL。
+依赖方向不要反过来。共享 Services 和信封不再定义在 Bean 工具中；adapter 不能自己 new HTTP 客户端。工具不能把用户字符串拼进 URL。最终 SDK 工具帧还经过 server.py 的出口预算检查。
 
 ## 2. 八个工具
 
@@ -72,11 +75,12 @@ transport/responses.py         structuredContent 与一份文本副本，整帧 
 
 改 `src/spring_runtime_mcp/` 时，`tests/security/test_redteam_readonly.py` 会做 AST 扫描：
 
-- 只有 `actuator_http.py` 可以 `import http.client`。`socket`、`urllib.request`、`requests`、`httpx`、`aiohttp`、`urllib3`、`subprocess` 在生产包里都禁止。
+- 只有 `transport/actuator_http.py` 可以导入 `http.client` 和 `socket`，用于固定 GET、数字 IP 建连与 peer 校验。`urllib.request`、`requests`、`httpx`、`aiohttp`、`urllib3`、`subprocess` 在生产包里仍禁止。
 - 生产代码不能调用 `print`、`eval`、`exec`、`compile`。
 - 方法名 `post`、`put`、`patch`、`delete`、`system`、`popen` 会被当成写操作。唯一例外是 `snapshots.put`，而且只允许出现在 `inspect_beans.py` 和 `support.py`。新工具要分页，调用 `support.finalize`，不要自己 `snapshots.put`。
 - 名为 `request` 的调用只能出现在 `response_gate.py` 和 `actuator_http.py`，各一处。门上的 `method` 必须是常量 `"GET"`，`follow_redirects` 必须是常量 `False`。
 - 对 reader 传入 POST/PUT/PATCH/DELETE/HEAD 应在发请求前失败。
+- 原始 socket send 仍禁止。唯一准许的 `.send` 调用是 `server._BoundedWriteStream` 中的 `self._stream.send`，交给官方 SDK 内存协议流；AST 测试固定这一处，stdout/framing 仍由 SDK 负责。
 
 出站还有两道门：
 
@@ -105,7 +109,9 @@ PYTHONPATH=src uv run --offline --no-project --with jsonschema==4.25.1 --with mc
   python -m spring_runtime_mcp.cli --base-url http://127.0.0.1:18081
 ```
 
-等价环境变量：`SPRING_RUNTIME_BASE_URL`、`SPRING_RUNTIME_TARGET_ID`（默认 `local`）、`SPRING_RUNTIME_TIMEOUT`（默认 `5` 秒）。没有 `--url`。`--base-url` 只接受没有用户信息、查询串和路径的 origin。
+等价环境变量：`SPRING_RUNTIME_BASE_URL`、`SPRING_RUNTIME_TARGET_ID`（默认 `local`）、`SPRING_RUNTIME_TIMEOUT`（默认 `5` 秒）。没有 `--url`。`--base-url` 只接受没有用户信息、查询串和路径的 origin。配置诊断通过 `--config-prefix`/`--config-property` 登记范围，`--config-profiles`/`--config-allow-values` 分别开放 Profile 与登记值输出；全部默认关闭。
+
+Bearer 鉴权使用 `--token-env SHOP_ACTUATOR_TOKEN`，只在进程环境提供令牌值。它绑定单一登记 origin 并加入 SanitizerPipeline 的已知秘密集合，不向工具开放请求头。Basic、自定义管理路径、非回环目标与 `/v3/api-docs` 回退尚未交付。
 
 `pyproject.toml` 登记了脚本名 `spring-runtime-mcp`。依赖已缓存时可以用 `uv run --project <仓库绝对路径> spring-runtime-mcp --base-url http://127.0.0.1:18081`。首次创建项目虚拟环境可能要访问包索引；诊断流量本身只去 `--base-url`。
 

@@ -11,10 +11,12 @@ from ..contracts.definitions import validate_arguments
 from ..models.common import NormalizationError
 from ..models.queries import MappingQuery
 from ..transport.response_gate import EndpointReadError
-from .inspect_beans import Services, failed, partial
-from .support import finalize, read_checked, resume, shell, stamp
+from ..services import Services
+from ..diagnostics import failed, partial
+from .support import tool_handler, finalize, read_checked, resume, shell, stamp
 
 
+@tool_handler
 async def verify_mappings(
     arguments: Mapping[str, Any], services: Services
 ) -> dict[str, Any]:
@@ -42,7 +44,7 @@ async def verify_mappings(
             item["endpointId"] = "mappings"
             item["observationId"] = observation.observation_id
         result["data"] = {"items": items}
-        result["totalMatched"] = len(items)
+        result["totalMatched"] = None if gaps else len(items)
         partial(result, gaps)
         return finalize(result, services, query)
     except NormalizationError as exc:

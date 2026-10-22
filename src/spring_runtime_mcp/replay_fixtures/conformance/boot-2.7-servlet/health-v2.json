@@ -1,0 +1,14 @@
+{
+  "status": "DOWN",
+  "details": {
+    "db": {
+      "status": "DOWN",
+      "details": {
+        "database": "H2"
+      }
+    },
+    "redis": {
+      "status": "UP"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+diff --git a/pom.xml b/pom.xml
+--- a/pom.xml
++++ b/pom.xml
+@@ -151,5 +151,15 @@
+     </build>
+     <profiles>
++        <!-- Local runtime diagnostics only; disabled unless explicitly selected. -->
++        <profile>
++            <id>runtime-diagnostics</id>
++            <dependencies>
++                <dependency>
++                    <groupId>org.springframework.boot</groupId>
++                    <artifactId>spring-boot-starter-actuator</artifactId>
++                </dependency>
++            </dependencies>
++        </profile>
+         <!-- 全量验证（含真实 PostgreSQL 容器）：mvn -Pintegration test -->
+         <profile>
+             <id>integration</id>

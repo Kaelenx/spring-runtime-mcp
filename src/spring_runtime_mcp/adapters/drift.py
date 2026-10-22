@@ -17,6 +17,7 @@ from ..analyzers.bean_graph import (
     build_dependency_graph,
     resolve_bean_reference,
     slice_dependencies,
+    visible_beans,
 )
 from ..analyzers.condition_failures import is_assignable
 from ..models.bean_graph import Bean, BeanGraph, BeanKey, ContextKey
@@ -291,19 +292,8 @@ def _beans_by_type(
     )
     if start not in graph.contexts:
         return [] if graph.coverage == "complete" else None
-    visible: list[BeanKey] = []
-    current: ContextKey | None = start
-    seen: set[ContextKey] = set()
-    while current is not None:
-        if current in seen or current not in graph.contexts:
-            return None
-        seen.add(current)
-        context = graph.contexts[current]
-        if not context.complete or context.parent.state != "known":
-            return None
-        visible.extend(key for key in graph.beans if key.context == current)
-        current = context.parent.value
-    return sorted(set(visible))
+    visible = visible_beans(graph, start)
+    return None if visible is None else sorted(visible)
 
 
 def _start_contexts(
@@ -630,7 +620,12 @@ def _installed_version(rows: list[dict[str, Any]]) -> tuple[str | None, str]:
     ranked: list[tuple[int, str]] = []
     saw_unranked = False
     for row in rows:
-        if row.get("rawState") != "SUCCESS" or not isinstance(row.get("version"), str):
+        if row.get("rawState") not in {
+            "SUCCESS",
+            "OUT_OF_ORDER",
+            "MISSING_SUCCESS",
+            "FUTURE_SUCCESS",
+        } or not isinstance(row.get("version"), str):
             continue
         rank = row.get("orderExecuted")
         if type(rank) is not int:

@@ -1,0 +1,30 @@
+{
+  "contexts": {
+    "application": {
+      "liquibaseBeans": {
+        "ordersLiquibase": {
+          "changeSets": [
+            {
+              "author": "fixture",
+              "changeLog": "db/changelog/master.yaml",
+              "comments": "synthetic table creation",
+              "contexts": [],
+              "dateExecuted": "2026-10-16T00:00:00Z",
+              "deploymentId": "fixture-deployment",
+              "description": "createTable",
+              "execType": "EXECUTED",
+              "id": "001",
+              "labels": [],
+              "checksum": "9:0123456789abcdef0123456789abcdef",
+              "orderExecuted": 1,
+              "tag": null
+            }
+          ]
+        },
+        "auditLiquibase": {
+          "changeSets": []
+        }
+      }
+    }
+  }
+}

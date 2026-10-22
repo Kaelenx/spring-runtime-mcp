@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "2",
+  "status": "ok",
+  "source": {
+    "targetId": "local",
+    "snapshotId": "fixture-snapshot",
+    "observedAt": "2026-10-16T00:00:00Z",
+    "endpointIds": [
+      "mappings"
+    ],
+    "bootVersion": null,
+    "adapterVersion": "fixture-1",
+    "policyVersion": "fixture-1"
+  },
+  "data": {
+    "items": [
+      {
+        "id": "item_1",
+        "endpointId": "mappings",
+        "observationId": "fixture_observation",
+        "contextId": "application",
+        "parentContextId": null,
+        "stack": "mvc",
+        "dispatcherName": "dispatcherServlet",
+        "paths": [
+          "/orders"
+        ],
+        "httpMethods": [
+          "GET"
+        ],
+        "methodsUnrestricted": false,
+        "controllerClass": "example.OrderController",
+        "handlerMethod": "list",
+        "descriptor": "(Ljakarta/servlet/http/HttpServletRequest;)Ljava/lang/String;",
+        "handlerKind": "method",
+        "conditions": [],
+        "matchingComplete": true
+      }
+    ]
+  },
+  "totalMatched": 1,
+  "truncated": false,
+  "truncationReasons": [],
+  "coverage": {
+    "state": "complete",
+    "scope": "contract_fixture",
+    "gaps": []
+  },
+  "warnings": [],
+  "redactions": [],
+  "nextCursor": null,
+  "nextAction": {
+    "kind": "done",
+    "reasonCode": "COMPLETE",
+    "filterSuggestions": []
+  },
+  "errors": []
+}

@@ -6,7 +6,7 @@ import json
 import math
 from typing import Any
 
-from ..models.common import NormalizationError
+from ..models.common import NormalizationError, remaining_seconds
 
 
 def _pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -43,6 +43,8 @@ def loads_bounded(
         text = data.decode("utf-8")
         depth = nodes = index = 0
         while index < len(text):
+            if index % 2048 == 0:
+                remaining_seconds()
             char = text[index]
             if char == '"':
                 nodes += 1
@@ -96,6 +98,8 @@ def validate_tree(
     seen: set[int] = set()
     nodes = size = 0
     while stack:
+        if nodes % 256 == 0:
+            remaining_seconds()
         item, depth = stack.pop()
         nodes += 1
         if depth > max_depth or nodes > max_nodes:

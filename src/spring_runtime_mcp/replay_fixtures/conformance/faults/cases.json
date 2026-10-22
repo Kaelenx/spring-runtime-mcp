@@ -1,0 +1,63 @@
+[
+  {
+    "id": "connection-refused",
+    "endpointId": "beans",
+    "error": "ECONNREFUSED"
+  },
+  {
+    "id": "read-timeout",
+    "endpointId": "beans",
+    "error": "ETIMEDOUT"
+  },
+  {
+    "id": "not-exposed",
+    "endpointId": "beans",
+    "status": 404,
+    "contentType": "application/json",
+    "body": {
+      "status": 404
+    }
+  },
+  {
+    "id": "startup-unavailable",
+    "endpointId": "startup",
+    "status": 404,
+    "contentType": "application/json",
+    "body": {
+      "status": 404
+    }
+  },
+  {
+    "id": "unauthorized",
+    "endpointId": "beans",
+    "status": 401,
+    "contentType": "text/html",
+    "body": "<html>unauthorized</html>"
+  },
+  {
+    "id": "forbidden",
+    "endpointId": "beans",
+    "status": 403,
+    "contentType": "application/json",
+    "body": {}
+  },
+  {
+    "id": "login-redirect",
+    "endpointId": "beans",
+    "status": 302,
+    "headers": {
+      "Location": "/login"
+    },
+    "contentType": "text/html",
+    "body": "<html>login</html>"
+  },
+  {
+    "id": "health-hidden",
+    "endpointId": "health",
+    "status": 200,
+    "contentType": "application/vnd.spring-boot.actuator.v3+json",
+    "body": {
+      "status": "DOWN"
+    }
+  }
+]

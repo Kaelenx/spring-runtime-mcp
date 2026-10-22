@@ -11,8 +11,9 @@ from ..contracts.definitions import validate_arguments
 from ..models.common import NormalizationError
 from ..models.queries import HealthQuery
 from ..transport.response_gate import EndpointReadError
-from .inspect_beans import Services, failed, partial
-from .support import finalize, read_checked, resume, shell, stamp
+from ..services import Services
+from ..diagnostics import failed, partial
+from .support import tool_handler, finalize, read_checked, resume, shell, stamp
 
 _ENDPOINTS = {
     "application": "health",
@@ -21,6 +22,7 @@ _ENDPOINTS = {
 }
 
 
+@tool_handler
 async def diagnose_health(
     arguments: Mapping[str, Any], services: Services
 ) -> dict[str, Any]:
@@ -51,7 +53,15 @@ async def diagnose_health(
             "activeGroup": query.group,
             "items": items,
         }
-        result["totalMatched"] = len(items)
+        limited = {"HEALTH_DETAILS_LIMIT", "HEALTH_DEPTH_LIMIT"} & set(gaps)
+        if limited:
+            result["truncated"] = True
+            result["truncationReasons"] = sorted(
+                set(result["truncationReasons"] + list(limited))
+            )[:8]
+        result["totalMatched"] = (
+            None if limited or "HEALTH_DETAILS_NOT_VISIBLE" in gaps else len(items)
+        )
         partial(result, gaps)
         if "HEALTH_DETAILS_NOT_VISIBLE" in result["coverage"]["gaps"]:
             result["nextAction"] = {

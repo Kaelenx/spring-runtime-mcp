@@ -1,0 +1,68 @@
+name: Shared validation
+
+on:
+  workflow_call:
+    inputs:
+      verify-release:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: pytest (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.1
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --dev --locked
+      - name: Offline fixture tests
+        run: uv run --no-sync python -m pytest -q
+      - name: Tool contract validation
+        run: uv run --no-sync python scripts/validate_tool_contract.py
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.1
+        with:
+          python-version: "3.12"
+      - run: uv sync --dev --locked
+      - run: uv run --no-sync python -m mypy src/spring_runtime_mcp
+      - run: uv run --no-sync ruff check src tests scripts
+      - run: uv run --no-sync ruff format --check src tests scripts
+
+  build:
+    name: wheel + SDK interoperability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.1
+        with:
+          python-version: "3.12"
+      - run: uv sync --dev --locked
+      - name: Verify release tag matches package metadata
+        if: inputs.verify-release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: uv run --no-sync python -c 'import os; from spring_runtime_mcp import __version__; assert os.environ["RELEASE_TAG"] == "v" + __version__'
+      - run: uv build
+      - name: Install wheel with tested dependency versions and check both protocol eras
+        run: |
+          uv export --frozen --no-dev --no-editable --no-emit-project --no-hashes -o runtime-constraints.txt
+          uv venv .ci-venv
+          uv pip install --python .ci-venv/bin/python -c runtime-constraints.txt dist/*.whl
+          .ci-venv/bin/python scripts/check_stdio_install.py --command .ci-venv/bin/spring-runtime-mcp
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/

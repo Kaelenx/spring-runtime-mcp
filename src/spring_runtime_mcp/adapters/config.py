@@ -7,6 +7,8 @@ from collections.abc import Iterator
 from copy import deepcopy
 from typing import Any
 
+from ..models.common import AnalysisBudget
+
 from ..contracts.definitions import glob_matches
 from ..models.queries import ConfigQuery
 from ..policy.sanitization import MARKER, SanitizerPipeline, sensitive_key
@@ -122,6 +124,7 @@ def normalize_config(
     policy: ConfigReadPolicy | None = None,
 ) -> tuple[list[str] | None, list[dict[str, Any]], list[str]]:
     gaps: set[str] = set()
+    analysis_budget = AnalysisBudget()
     profiles: list[str] | None = None
     rows: list[dict[str, Any]] = []
     if isinstance(env, dict):
@@ -150,6 +153,7 @@ def normalize_config(
                     gaps.add("ENV_PROPERTIES_UNOBSERVED")
                     continue
                 for key in sorted(properties):
+                    analysis_budget.consume()
                     if not isinstance(key, str) or not _selected(query, key):
                         continue
                     if policy is not None and not policy.allows(key):
@@ -222,6 +226,7 @@ def normalize_config(
                     for key, raw_value in _nested_leaves(
                         prefix or "", properties, gaps=gaps, budget=budget
                     ):
+                        analysis_budget.consume()
                         if not _selected(query, key):
                             continue
                         if policy is not None and not policy.allows(key):

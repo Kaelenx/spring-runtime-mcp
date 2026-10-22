@@ -4,7 +4,7 @@
 
 **规范版本：0.7。** 本文是产品范围、工具契约、默认值、验收要求和编码 Agent 权限的唯一事实来源。发生冲突时，以本文的具体规格为准；[ADR 0001](docs/adr/0001-positioning-and-non-goals.md)保留架构决策依据，[安全架构规格书](docs/architecture/security-and-sanitization.md)细化网络守卫、只读策略与脱敏机制，[跨版本归一化设计](docs/architecture/cross-version-normalization.md)定义源诊断域、关系解析及自愈配方，[工具契约](src/spring_runtime_mcp/schemas/tools-contract.json)及其[调用策略](docs/contracts/tool-calling-policy.md)固定八个公开工具；[项目计划](Spring-Boot-Safe-Runtime-MCP-Project-Plan.md)作为历史背景。变更公开契约必须同步本文、Schema、fixture 和相关架构文档。
 
-当前 v0.2.0 已实现八个工具处理器、Python 分析内核、有界脱敏出口、固定 fixture 离线重放、基于官方 MCP Python SDK 的 STDIO 宿主与标准库只读 HTTP 连接器。`pyproject.toml` 已配置 hatchling 构建后端，运行依赖包含 `mcp` 2.x；尚无锁文件。离线及回环 fixture 测试不等同于生产连通、完整协议合规或真实 Boot 版本兼容；第三方客户端互操作仍需单独验收。下述完整产品要求仍是验收目标，v0.2.0 的实际封板范围与限制见 [版本记录](CHANGELOG.md)。尚未实现或目标未提供数据的能力必须显式报告，禁止模拟成功结果。
+当前 v0.2.0 工作树已实现八工具、Python 分析内核、有界脱敏出口、fixture 重放、官方 MCP Python SDK 2.x STDIO 宿主、标准库只读 HTTP 连接器及命名环境变量的 Bearer 绑定。`uv.lock` 锁定运行/开发依赖，hatchling 构建的 wheel 包含工具契约与 `py.typed`。综合修复后的离线门禁为 782 passed；另经明确授权验收了 Boot 3.5.16 / Java 21 / MVC / JWT / 临时 PostgreSQL 的 TDD 已提交副本。它们不等同于生产验收、第三方客户端互操作或完整 Boot 版本矩阵。下述完整产品要求仍是验收目标，实际范围和限制见 [版本记录](CHANGELOG.md)与[修复验收报告](docs/audits/comprehensive-remediation-2026-10-22.md)。尚未实现或目标未提供数据的能力必须显式报告，禁止模拟成功结果。
 
 产品以独立 Python CLI/Sidecar 运行，默认通过 MCP STDIO 为 Codex、Claude Code、Cursor、VS Code 提供本地优先、只读、安全默认的 Spring Boot 运行证据。目标可以是本地实例或开发者明确获权访问的实例。服务受控读取标准 Actuator、可选 OpenAPI 与迁移状态，执行确定性归一化、脱敏及诊断；模型负责解释结果，不参与权限决策。
 
@@ -121,24 +121,24 @@ Profile 与覆盖来源由默认关闭的配置诊断能力读取，保留 env-p
 
 ## 3. 技术栈与运行时架构（Tech Stack & Runtime Architecture）
 
-### 3.1 固定技术栈与层级职责
+### 3.1 当前技术栈与层级职责
 
 | 层 | 技术与职责 | 禁止跨越的边界 |
 | --- | --- | --- |
-| CLI / 配置 | Python 3.11+、Typer、Pydantic Settings、TOML；加载目标、能力、基线和环境变量名称。 | 凭据值不进入 CLI 参数、配置样例或 MCP 输入。 |
-| MCP 协议 | 官方 MCP Python SDK、STDIO、Pydantic 输入/输出模型；注册八个固定工具、校验 Schema、映射错误。 | stdout 仅承载协议；诊断日志写经脱敏的 stderr。不开放额外 HTTP MCP 监听端口。 |
-| 安全 HTTP 客户端 | httpx；集中实施目标、方法、路径、认证、TLS、重定向、超时和流式大小限制。 | 业务层不能自行创建 HTTP 客户端，模型不能控制 headers/proxy/URL。 |
+| CLI / 配置 | Python 3.11+、argparse；登记 origin、目标、时限、源码目录文件和令牌环境变量名。 | 凭据值不进入 CLI 参数、配置样例或 MCP 输入。完整 TOML/逐端点配置入口尚未交付。 |
+| MCP 协议 | 官方 MCP Python SDK 2.x lowlevel Server、STDIO；SDK Pydantic 协议模型与 jsonschema 工具契约校验。 | stdout 仅承载协议；诊断日志写经脱敏的 stderr。不开放额外 HTTP MCP 监听端口。 |
+| 安全 HTTP 客户端 | 标准库 http.client/socket/ssl；固定路径 GET、回环 DNS/IP/peer 验证、TLS 验证、单目标 Bearer 绑定、流式大小限制。共享 Services 限制读取并发和调用时限。 | 只有 transport/actuator_http.py 创建连接；模型不能控制 headers/proxy/URL。远程目标、完整压缩及响应头预算仍是目标。 |
 | 跨版本归一化 | Boot 2.7、3.x、4.x 的独立适配器，输出统一类型模型并保留字段来源和未知值。 | 不把版本差异散落在工具中；不根据单个版本字符串宣称全兼容。 |
 | 双层脱敏 | 目标端原生授权/适用字段屏蔽，加本服务独立字段白名单、递归值过滤、错误与日志清理。 | 第二层不可关闭；生产默认仅输出结构化事实，不回传原始自由文本；不依赖模型识别秘密。 |
 | 分析与输出 | 纯函数图遍历、条件解释、路由匹配、迁移/启动审计、引用解析和漂移比较；共享分页与字节预算器。 | 不执行目标响应中的指令，不执行修复，不生成无证据因果关系。 |
-| 离线契约测试 | pytest、pytest-asyncio、respx、jsonschema；真实结构的脱敏 fixture、对抗样本、Schema 与快照重放。 | 默认测试不访问真实服务、不需要凭据、模型 API、JDK 或 Docker。 |
+| 离线契约测试 | pytest、asyncio.run、标准库回环 fixture 服务与 jsonschema；合成结构、对抗样本、Schema 与快照重放。 | 默认测试不访问真实服务、不需要凭据、模型 API、JDK 或 Docker；真实验收脚本独立运行。 |
 | 工程工具 | uv、PEP 517 构建、Ruff、mypy；锁定依赖并构建 wheel/sdist。 | 类型与 Schema 漂移不得仅通过更新快照消除失败。 |
 
 ### 3.2 网络、配置与资源预算
 
-默认目标为 `http://127.0.0.1:8080`，管理基路径 `/actuator`。基础能力为 health、beans、mappings、flyway、liquibase；conditions、startup、openapi、info、env、configprops、env-property 及探针组需要可信本地配置显式启用。配置变更不能开放全局非目标端点。
+当前 CLI 默认目标为 `http://127.0.0.1:18081`，固定管理基路径 `/actuator`。固定端点集合包含 health、beans、conditions、mappings、flyway、liquibase、startup、openapi 及 liveness/readiness；仅按实际工具需求读取，不在启动时探测。env/configprops 默认关闭；CLI 通过 `--config-prefix`/`--config-property` 显式登记读取范围，`--config-profiles` 开放 Profile 比较，`--config-allow-values` 才允许返回脱敏后的登记标量值。info/env-property、逐端点配置及自定义管理基路径尚未实现。配置变更不能开放全局非目标端点。
 
-`--url`、`--config`、`--token-env`、`--version` 和 `--help` 为必须提供的 CLI 入口。配置允许固定 Basic/Bearer/受限自定义认证头，秘密均从指定环境变量读取；禁止 URL userinfo 和带凭据查询参数。非回环目标（私网及公网）仅允许验证 TLS 的 HTTPS，且必须登记 scheme/host/port 与解析地址规则；HTTP 仅允许已登记的回环实例。回环默认覆盖 IPv4/IPv6，不能通过 localhost 解析到非回环地址绕过限制。禁止自动发现内网、跨目标复用凭据和跟随重定向，禁用环境代理自动继承；连接时须校验实际目标，避免 DNS 重绑定绕过。
+当前入口为 `--base-url`、`--target-id`、`--timeout`、`--source-catalog`、`--token-env`、`--config-prefix`、`--config-property`、`--config-profiles`、`--config-allow-values` 和 `--help`；不提供 `--url` 别名。Bearer 仅从命名环境变量读取并绑定登记 origin；禁止 URL userinfo 和带凭据查询参数。Basic、自定义认证头、完整配置文件与 `--version` 是未交付项。当前所有目标限制回环；未来若支持非回环，必须使用验证 TLS 的 HTTPS，另行登记 scheme/host/port 与地址规则，不构成当前放行依据。回环覆盖 IPv4/IPv6，不能通过 localhost 解析到非回环地址绕过限制。禁止自动发现内网、跨目标复用凭据和跟随重定向，禁用环境代理自动继承；连接时须校验实际目标，避免 DNS 重绑定绕过。
 
 TLS 必须验证证书与登记主机身份，本产品不提供绕过验证的工具参数或启动配置，也不提供非回环 HTTP 例外。管理基路径和单属性名称按固定规则编码，拒绝路径穿越、通配路径和控制字符。配置只允许预注册逻辑端点及明确安全属性；永远不提供任意端点调用器。
 
@@ -207,7 +207,7 @@ src/spring_runtime_mcp/
     serialization.py
   snapshots.py               # 有界内存快照与游标
   schemas/tools-contract.json # 八个可独立提取的 inputSchema/outputSchema，随 wheel 分发
-scripts/export_contracts.py  # --check / --write
+scripts/validate_tool_contract.py  # 契约与正反例检查
 tests/
   unit/
   security/
@@ -262,12 +262,11 @@ PYTHONPATH=src uv run --offline --no-project --with jsonschema==4.25.1 python -m
 | `uv run ruff check .` | 执行 lint。 |
 | `uv run mypy src scripts` | 执行类型检查。 |
 | `uv run pytest -q` | 默认仅运行 unit、security、contracts；必须在无目标服务、无凭据的环境通过。 |
-| `uv run pytest -q tests/contracts` | 验证八个工具 Schema、错误契约、16KB 预算、分页与重放。 |
-| `uv run python scripts/export_contracts.py --check` | 将内存生成结果与 `src/spring_runtime_mcp/schemas/tools-contract.json` 比较；漂移时非零退出，不写文件。 |
-| `uv run python scripts/export_contracts.py --write` | 明确更新公开 Schema；必须连同规格与兼容性变更审阅。 |
+| `uv run pytest -q tests/conformance` | 验证八个工具 Schema、错误契约、16KB 预算、分页与重放。 |
+| `uv run python scripts/validate_tool_contract.py` | 校验输入/输出 Schema、排序、注解与正反例；漂移时非零退出。 |
 | `uv build` | 构建 wheel 和 sdist；不能以打包成功替代契约测试。 |
 | `uv run spring-runtime-mcp --help` | 验证 CLI 入口，不联网。 |
-| `uv run spring-runtime-mcp --url http://127.0.0.1:8080 --token-env SPRING_RUNTIME_TOKEN` | 启动 STDIO 服务；令牌由调用进程环境提供，不写入命令。实际读取仍需已授权目标及相应能力。 |
+| `uv run spring-runtime-mcp --base-url http://127.0.0.1:8080 --token-env SPRING_RUNTIME_TOKEN` | 启动 STDIO 服务；令牌由调用进程环境提供，不写入命令。实际读取仍需已授权目标及相应能力。 |
 
 演示应用必须提供 `boot-2`、`boot-3`、`boot-4` 与 `mvc`、`webflux` 的 Maven profiles，固定监听回环端口 18080，使用隔离的合成数据。按单个组合启动后，在另一终端运行集成测试：
 

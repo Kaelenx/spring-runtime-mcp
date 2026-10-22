@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ..models.common import AnalysisBudget
+
 _ABNORMAL = {"DOWN", "OUT_OF_SERVICE", "UNKNOWN"}
 _CLASS = re.compile(r"[A-Za-z_][A-Za-z0-9_.$]{0,255}\Z")
 
@@ -23,7 +25,9 @@ def _children(node: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
-def _scalars(node: dict[str, Any]) -> list[dict[str, Any]]:
+def _scalars(
+    node: dict[str, Any], gaps: set[str], *, report_limit: bool
+) -> list[dict[str, Any]]:
     details = node.get("details")
     if not isinstance(details, dict):
         return []
@@ -36,8 +40,10 @@ def _scalars(node: dict[str, Any]) -> list[dict[str, Any]]:
         )
         if (isinstance(value, (str, int, float, bool)) or value is None) and finite:
             rows.append({"name": str(key)[:128], "value": value})
-        if len(rows) >= 10:
-            break
+    if len(rows) > 10:
+        if report_limit:
+            gaps.add("HEALTH_DETAILS_LIMIT")
+        return rows[:10]
     return rows
 
 
@@ -81,8 +87,10 @@ def normalize_health(
     overall = body.get("status") if isinstance(body.get("status"), str) else None
     found: list[dict[str, Any]] = []
     gaps: set[str] = set()
+    budget = AnalysisBudget()
 
     def walk(node: Any, path: tuple[str, ...], depth: int) -> None:
+        budget.consume()
         if not isinstance(node, dict):
             gaps.add("HEALTH_COMPONENT_UNREADABLE")
             return
@@ -93,8 +101,13 @@ def normalize_health(
         status = raw_status if isinstance(raw_status, str) and raw_status else "UNKNOWN"
         if not isinstance(raw_status, str) or not raw_status:
             gaps.add("HEALTH_STATUS_UNOBSERVED")
-        scalars = _scalars(node)
-        hidden = status != "UP" and not children and not scalars
+        scalars = _scalars(node, gaps, report_limit=include_details)
+        # Root UP is an observed aggregate status, not evidence that components
+        # are absent. Explicit components={} is a reported empty inventory.
+        hidden_root = (
+            depth == 0 and "components" not in node and not children and not scalars
+        )
+        hidden = hidden_root or (status != "UP" and not children and not scalars)
         if hidden:
             gaps.add("HEALTH_DETAILS_NOT_VISIBLE")
         if depth > max_depth:

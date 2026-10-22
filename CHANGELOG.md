@@ -1,5 +1,17 @@
 # 版本记录
 
+## 未发布 — 2026-10-22 综合审查修复
+
+- 关闭 [综合审查](docs/audits/comprehensive-review-2026-10-22.md)的 CR-01 至 CR-13；逐项证据见[修复验收报告](docs/audits/comprehensive-remediation-2026-10-22.md)。超长请求 ID 在 SDK 前拒绝并以 null ID 结束会话；真实 SDK 工具出口再次检查 16 KiB 上限。
+- 下沉共享 `Services` 与安全诊断信封，八工具共用每目标两个读取槽和一个 15 秒 deadline；排队、读取、协作分析及输出检查使用同一预算。
+- 修复 OpenAPI 组合/字典 Schema、本地 PathItem/Response 引用及 3.0/3.1 `$ref` 语义；未知 Schema 语义明确 partial。修复迁移缺证据推导、checksum 可比性、Bean 类型查询的父子遮蔽、成功迁移状态及隐藏 UP 组件的可见性结论。
+- STDIO 进程测试按回复完成再关闭输入，并使用有时限的管道读取。CI/发布复用校验工作流，发布依赖全部门禁且校验版本标签；没有执行发布。
+- 增加 `uv.lock`、固定开发工具版本及 wheel 的 `py.typed`。隔离安装通过官方 SDK 2.3.0 客户端的 legacy / 2026-07-28 发现及工具错误检查。
+- 增加本地受信 `--token-env` Bearer 绑定，限制令牌格式并纳入已知秘密脱敏；不增加任意头透传或 Basic 支持，不改变工具公开 Schema、运行依赖或回环边界。
+- 明确批准后，针对 `<TDD checkout>` 的已提交 S8 副本完成 Boot 3.5.16 / Java 21 / MVC / JWT / 临时 PostgreSQL 16 验收。TDD 原工作区保留未完成业务代码，只新增已批准的可选 Actuator Maven profile。六个诊断端点均只读，匿名拒绝，环境和配置值端点关闭；结果见 [Shop 摘要](examples/tdd-runtime/verification.json)。这不代表全版本矩阵或 TDD 当前红阶段业务已完成。
+- 离线全量 **782 passed**，mypy 51 文件、Ruff、八工具契约、wheel/sdist 构建及安装验证通过。
+- 交付审计追加修复：drift 在 startup 证据缺失时返回显式 `STARTUP_EVIDENCE_UNAVAILABLE` 而不是 `ok`；mappings 对不可读 patterns/methods 标记 partial 并禁止伪造 unrestricted；Bean 缺失类型/scope、health details/startup tags 截断、迁移预算耗尽及 date-time 输出契约均显式标注；配置诊断新增 `--config-prefix/--config-property/--config-profiles/--config-allow-values`；replay fixtures 随包分发，安装 wheel 后可重放。
+
 ## v0.2.0 — 2026-10-22
 
 - 关闭 2026-10-18 逻辑与边界审计的 TC-BUG-01 至 15；连接器增加数字地址固定与 peer 校验，安全静态清单仅对 `transport/actuator_http.py` 放行 `socket`/`http.client` 导入并新增禁止原始套接字写入。全量 730 passed。

@@ -1,0 +1,40 @@
+{
+  "contexts": {
+    "application": {
+      "mappings": {
+        "dispatcherServlets": {
+          "dispatcherServlet": [
+            {
+              "handler": "example.OrderController#list",
+              "predicate": "{GET [/orders]}",
+              "details": {
+                "handlerMethod": {
+                  "className": "example.OrderController",
+                  "name": "list",
+                  "descriptor": "(Ljavax/servlet/http/HttpServletRequest;)Ljava/lang/String;"
+                },
+                "requestMappingConditions": {
+                  "methods": [
+                    "GET"
+                  ],
+                  "patterns": [
+                    "/orders"
+                  ],
+                  "headers": [],
+                  "params": [],
+                  "consumes": [],
+                  "produces": [
+                    {
+                      "mediaType": "application/json",
+                      "negated": false
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

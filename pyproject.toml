@@ -28,6 +28,9 @@ classifiers = [
 ]
 dependencies = ["jsonschema==4.25.1", "mcp>=2.3,<3"]
 
+[dependency-groups]
+dev = ["pytest==8.4.2", "mypy==1.18.2", "ruff==0.14.1"]
+
 [project.urls]
 Homepage = "https://github.com/Kaelenx/spring-runtime-mcp"
 Repository = "https://github.com/Kaelenx/spring-runtime-mcp"
@@ -44,7 +47,7 @@ spring-runtime-mcp = "spring_runtime_mcp.cli:main"
 packages = ["src/spring_runtime_mcp"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "scripts", "docs", "*.md", "LICENSE"]
+include = ["src", "tests", "scripts", "docs", "examples", "*.md", "LICENSE", "uv.lock"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "tests"]

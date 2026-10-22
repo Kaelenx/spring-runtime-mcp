@@ -11,10 +11,12 @@ from ..contracts.definitions import validate_arguments
 from ..models.common import NormalizationError
 from ..models.queries import OpenApiQuery
 from ..transport.response_gate import EndpointReadError
-from .inspect_beans import Services, failed, partial
-from .support import finalize, read_checked, resume, shell, stamp
+from ..services import Services
+from ..diagnostics import failed, partial
+from .support import tool_handler, finalize, read_checked, resume, shell, stamp
 
 
+@tool_handler
 async def search_openapi(
     arguments: Mapping[str, Any], services: Services
 ) -> dict[str, Any]:

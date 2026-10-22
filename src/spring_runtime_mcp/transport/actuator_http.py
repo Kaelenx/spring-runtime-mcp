@@ -176,7 +176,9 @@ def _read_bounded(
 class ActuatorHttpTransport:
     """Map a logical endpoint id onto one configured origin. No caller URLs."""
 
-    def __init__(self, base_url: str, *, targets: frozenset[str]) -> None:
+    def __init__(
+        self, base_url: str, *, targets: frozenset[str], bearer_token: str | None = None
+    ) -> None:
         if not targets or any(not isinstance(target, str) for target in targets):
             raise ValueError("INVALID_TARGET_REGISTRATION")
         scheme, host, port = _parse_base(base_url)
@@ -184,6 +186,13 @@ class ActuatorHttpTransport:
         self._host = host
         self._port = port
         self._targets = targets
+        if bearer_token is not None and (
+            not isinstance(bearer_token, str)
+            or not 1 <= len(bearer_token) <= 8192
+            or re.fullmatch(r"[A-Za-z0-9._~+/-]+=*", bearer_token) is None
+        ):
+            raise ValueError("INVALID_CREDENTIAL_REGISTRATION")
+        self._bearer_token = bearer_token
 
     async def request(
         self,
@@ -294,6 +303,7 @@ class ActuatorHttpTransport:
         # http.client's socket factory is the narrow seam that preserves its
         # framing while preventing a second hostname lookup or proxy handling.
         setattr(connection, "_create_connection", connect)
+        connection.set_debuglevel(0)
         return connection
 
     def _exchange(
@@ -327,10 +337,13 @@ class ActuatorHttpTransport:
         state.bind(connection)
         try:
             state.remaining()
+            headers = {"Accept": "application/json", "Connection": "close"}
+            if self._bearer_token is not None:
+                headers["Authorization"] = "Bearer " + self._bearer_token
             connection.request(
                 method="GET",
                 url=path,
-                headers={"Accept": "application/json", "Connection": "close"},
+                headers=headers,
             )
             upstream = connection.getresponse()
             body = _read_bounded(upstream, max_bytes, state)

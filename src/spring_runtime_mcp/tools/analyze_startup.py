@@ -11,10 +11,12 @@ from ..contracts.definitions import validate_arguments
 from ..models.common import NormalizationError
 from ..models.queries import StartupQuery
 from ..transport.response_gate import EndpointReadError
-from .inspect_beans import Services, failed, partial
-from .support import finalize, read_checked, resume, shell, stamp
+from ..services import Services
+from ..diagnostics import failed, partial
+from .support import tool_handler, finalize, read_checked, resume, shell, stamp
 
 
+@tool_handler
 async def analyze_startup(
     arguments: Mapping[str, Any], services: Services
 ) -> dict[str, Any]:
@@ -47,12 +49,16 @@ async def analyze_startup(
             "timelineComplete": complete,
             "items": items,
         }
-        capped = "STARTUP_NODE_LIMIT" in gaps
-        result["totalMatched"] = None if capped else len(items)
-        if capped:
+        limited = {
+            "STARTUP_NODE_LIMIT",
+            "STARTUP_TAG_LIMIT",
+            "STARTUP_DEPTH_LIMIT",
+        } & set(gaps)
+        result["totalMatched"] = None if limited else len(items)
+        if limited:
             result["truncated"] = True
             result["truncationReasons"] = sorted(
-                set(result["truncationReasons"] + ["STARTUP_NODE_LIMIT"])
+                set(result["truncationReasons"] + list(limited))
             )[:8]
         if not complete:
             gaps = [*gaps, "STARTUP_TIMELINE_INCOMPLETE"]

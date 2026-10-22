@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import json
 import os
+import selectors
 import subprocess
 import sys
 import threading
+import time
+import weakref
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -22,6 +25,31 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 FRAME_CAP = 64 * 1024
 PING = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
+_REPLY_BUFFERS: weakref.WeakKeyDictionary[subprocess.Popen[bytes], bytearray] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _read_line(process: subprocess.Popen[bytes], timeout: float) -> bytes:
+    assert process.stdout is not None
+    pending = _REPLY_BUFFERS.setdefault(process, bytearray())
+    deadline = time.monotonic() + timeout
+    with selectors.DefaultSelector() as selector:
+        selector.register(process.stdout, selectors.EVENT_READ)
+        while b"\n" not in pending:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not selector.select(remaining):
+                raise AssertionError("host did not answer before the read deadline")
+            chunk = os.read(process.stdout.fileno(), 65536)
+            assert chunk, "host closed before answering"
+            pending.extend(chunk)
+            assert len(pending) <= 2 * 1024 * 1024, (
+                "host frame exceeded test input budget"
+            )
+        end = pending.index(b"\n") + 1
+        line = bytes(pending[:end])
+        del pending[:end]
+        return line
 
 
 def _frame(payload: dict[str, Any]) -> bytes:
@@ -74,17 +102,20 @@ def host_in_stages(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=environment,
+        bufsize=0,
     )
     try:
         assert process.stdin is not None and process.stdout is not None
         transcript = b""
-        for index, stage in enumerate(stages):
-            process.stdin.write(stage)
-            process.stdin.flush()
-            if index < len(stages) - 1:
-                line = process.stdout.readline()
-                assert line, "host closed before answering a stage"
-                transcript += line
+        for stage in stages:
+            for frame in stage.splitlines(keepends=True):
+                payload = json.loads(frame)
+                process.stdin.write(frame)
+                process.stdin.flush()
+                if "id" in payload:
+                    line = _read_line(process, timeout)
+                    assert json.loads(line).get("id") == payload["id"]
+                    transcript += line
         process.stdin.close()
         returncode = process.wait(timeout=timeout)
         transcript += process.stdout.read()
@@ -137,7 +168,13 @@ def host(
 class Session:
     """Interactive process session for cases that must respect protocol order."""
 
-    def __init__(self, *, base_url: str | None = None, timeout: float = 30) -> None:
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        timeout: float = 30,
+        args: list[str] | None = None,
+    ) -> None:
         environment = dict(
             os.environ,
             PYTHONDONTWRITEBYTECODE="1",
@@ -146,6 +183,8 @@ class Session:
         command = [sys.executable, "-m", "spring_runtime_mcp.cli"]
         if base_url is not None:
             command += ["--base-url", base_url]
+        if args:
+            command += args
         self._process = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
@@ -153,6 +192,7 @@ class Session:
             stderr=subprocess.PIPE,
             env=environment,
             text=False,
+            bufsize=0,
         )
         self.timeout = timeout
 
@@ -162,10 +202,7 @@ class Session:
         self._process.stdin.flush()
 
     def read(self) -> dict[str, Any]:
-        assert self._process.stdout is not None
-        line = self._process.stdout.readline()
-        assert line, "host closed the stream before answering"
-        return json.loads(line)
+        return json.loads(_read_line(self._process, self.timeout))
 
     def request(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.send(payload)
@@ -326,9 +363,9 @@ def test_stdio_host_process_never_escalates_name_errors_to_internal() -> None:
     assert completed.returncode == 0 and completed.stderr == b""
     lines = [json.loads(line) for line in completed.stdout.splitlines()]
     answers = [line for line in lines if line.get("id") in {1, 2, 3, 4, 5}]
-    # A type-invalid name is rejected by the request shape; the SDK's typed
-    # parameters drop names that are simply absent or wrong-typed.
-    assert 1 <= len(answers) <= 5, answers
+    # Every malformed name must receive a controlled protocol error; a dropped
+    # request would hide an SDK/host regression.
+    assert {answer["id"] for answer in answers} == {1, 2, 3, 4, 5}, answers
     for answer in answers:
         assert answer["error"]["code"] == -32602, answer
     assert b"INTERNAL_ERROR" not in completed.stdout
@@ -413,3 +450,124 @@ def test_stdio_host_process_does_not_open_unregistered_endpoints() -> None:
     assert len(lines) == 2, completed.stdout
     body = json.loads(lines[1])
     assert "result" not in body and body["error"]["code"] == -32602
+
+
+@pytest.mark.parametrize("identifier", ["x" * 20000, "😀" * 33, 2**53])
+def test_cr01_request_identity_is_bounded_before_sdk_dispatch(
+    identifier: str | int,
+) -> None:
+    session = Session()
+    try:
+        session.initialize()
+        session.send(
+            {
+                "jsonrpc": "2.0",
+                "id": identifier,
+                "method": "tools/call",
+                "params": {
+                    "name": "springboot_diagnose_health",
+                    "arguments": {"maxResults": 0},
+                },
+            }
+        )
+        response = session.read()
+        assert response["id"] is None and response["error"]["code"] == -32600
+        assert len(json.dumps(response, ensure_ascii=False).encode("utf-8")) <= 16_384
+        returncode, stderr = session.close()
+        assert returncode == 0 and stderr == b""
+    finally:
+        if session._process.poll() is None:
+            session._process.kill()
+
+
+def test_cr02_real_stdio_limits_authenticated_reads_and_sanitizes_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = "synthetic-review-bearer-33"
+    monkeypatch.setenv("REVIEW_BEARER", token)
+    lock = threading.Lock()
+    state = {"active": 0, "peak": 0, "authorized": 0}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args: Any) -> None:
+            pass
+
+        def do_GET(self) -> None:
+            with lock:
+                state["active"] += 1
+                state["peak"] = max(state["peak"], state["active"])
+                state["authorized"] += (
+                    self.headers.get("Authorization") == "Bearer " + token
+                )
+            try:
+                time.sleep(0.05)
+                body = json.dumps(
+                    {
+                        "status": "DOWN",
+                        "components": {
+                            "db": {"status": "DOWN", "details": {"reason": token}}
+                        },
+                    }
+                ).encode()
+                self.send_response(503)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            finally:
+                with lock:
+                    state["active"] -= 1
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    session = Session(
+        base_url=f"http://127.0.0.1:{server.server_port}",
+        args=["--token-env", "REVIEW_BEARER"],
+    )
+    try:
+        session.initialize()
+        for number in range(1, 9):
+            session.send(
+                {
+                    "jsonrpc": "2.0",
+                    "id": number,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "springboot_diagnose_health",
+                        "arguments": {"includeDetails": True},
+                    },
+                }
+            )
+        replies = [session.read() for _ in range(8)]
+        assert {reply["id"] for reply in replies} == set(range(1, 9))
+        assert all(
+            reply["result"]["structuredContent"]["status"] == "ok" for reply in replies
+        )
+        assert token not in json.dumps(replies)
+        assert all(
+            len(json.dumps(reply, ensure_ascii=False).encode()) <= 16_384
+            for reply in replies
+        )
+        returncode, stderr = session.close()
+        assert returncode == 0 and stderr == b""
+        assert state["peak"] == 2 and state["authorized"] == 8
+    finally:
+        if session._process.poll() is None:
+            session._process.kill()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+@pytest.mark.parametrize("value", [None, "", "unsafe\r\nHeader:value"])
+def test_bearer_registration_fails_without_echoing_secrets(
+    monkeypatch: pytest.MonkeyPatch, value: str | None
+) -> None:
+    if value is None:
+        monkeypatch.delenv("REVIEW_BAD_BEARER", raising=False)
+    else:
+        monkeypatch.setenv("REVIEW_BAD_BEARER", value)
+    result = host(_frame(PING), args=["--token-env", "REVIEW_BAD_BEARER"])
+    assert result.returncode == 2 and result.stdout == b""
+    assert result.stderr == b"invalid server configuration\n"

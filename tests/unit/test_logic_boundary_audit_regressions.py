@@ -512,6 +512,9 @@ def test_tc_bug_09_timeout_must_close_the_underlying_http_exchange(
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
+        def set_debuglevel(self, level: int) -> None:
+            assert level == 0
+
         def request(self, **kwargs: Any) -> None:
             return None
 

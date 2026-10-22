@@ -11,10 +11,12 @@ from ..contracts.definitions import validate_arguments
 from ..models.common import NormalizationError
 from ..models.queries import MigrationQuery
 from ..transport.response_gate import EndpointReadError
-from .inspect_beans import Services, error, failed, partial, safe_code
-from .support import finalize, read_checked, resume, shell, stamp
+from ..services import Services
+from ..diagnostics import error, failed, partial, safe_code
+from .support import tool_handler, finalize, read_checked, resume, shell, stamp
 
 
+@tool_handler
 async def check_migrations(
     arguments: Mapping[str, Any], services: Services
 ) -> dict[str, Any]:

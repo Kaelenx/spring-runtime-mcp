@@ -3,14 +3,51 @@
 from __future__ import annotations
 
 import asyncio
+import time
+from collections.abc import Awaitable, Callable, Mapping
 from copy import deepcopy
 from datetime import UTC, datetime
+from functools import wraps
 from typing import Any
 
-from ..models.common import NormalizationError
+from ..models.common import CALL_BUDGET, CallBudget, NormalizationError
 from ..snapshots import SnapshotStore
 from ..transport.responses import serialize_response
-from .inspect_beans import Services, _check, failed, partial
+from ..services import Services
+from ..diagnostics import _check, failed, partial
+
+TOOL_TIMEOUT_SECONDS = 15.0
+ToolHandler = Callable[[Mapping[str, Any], Services], Awaitable[dict[str, Any]]]
+
+
+def tool_handler(handler: ToolHandler) -> ToolHandler:
+    """Bound reads, queued work and cooperative analysis under a single scope."""
+
+    @wraps(handler)
+    async def bounded(
+        arguments: Mapping[str, Any], services: Services
+    ) -> dict[str, Any]:
+        parent = CALL_BUDGET.get()
+        scope = parent or CallBudget(time.monotonic() + TOOL_TIMEOUT_SECONDS)
+        token = CALL_BUDGET.set(scope)
+        target = (
+            arguments.get("targetId", "local")
+            if isinstance(arguments, Mapping)
+            else "local"
+        )
+        try:
+            async with asyncio.timeout(scope.check()):
+                result = await handler(arguments, services)
+                scope.check()
+                return result
+        except TimeoutError:
+            return failed("TARGET_TIMEOUT", target)
+        except NormalizationError as exc:
+            return failed(exc.code, target)
+        finally:
+            CALL_BUDGET.reset(token)
+
+    return bounded
 
 
 def shell(target: str, scope: str, adapter: str) -> dict[str, Any]:
@@ -67,10 +104,7 @@ async def read_checked(
         from ..transport.response_gate import EndpointReadError
 
         raise EndpointReadError("CAPABILITY_DISABLED", endpoint)
-    observation = await asyncio.wait_for(
-        services.reader.read(target, endpoint, snapshot_id=snapshot),
-        timeout=15,
-    )
+    observation = await services.read(target, endpoint, snapshot_id=snapshot)
     _check(observation, target, snapshot, endpoint)
     return observation
 

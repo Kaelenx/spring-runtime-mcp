@@ -6,6 +6,8 @@ import re
 from dataclasses import replace
 from typing import Any
 
+from ..models.common import AnalysisBudget, AnalysisLimit
+
 from ..models.queries import MigrationQuery
 
 _FLYWAY = {
@@ -77,6 +79,7 @@ def _from_flyway(body: Any) -> tuple[list[dict[str, Any]], list[str]]:
         raise ValueError("INVALID_MIGRATIONS_SHAPE")
     rows: list[dict[str, Any]] = []
     gaps: set[str] = set()
+    budget = AnalysisBudget()
     for context_name in sorted(body["contexts"]):
         context = body["contexts"][context_name]
         if not isinstance(context, dict) or not isinstance(
@@ -96,6 +99,7 @@ def _from_flyway(body: Any) -> tuple[list[dict[str, Any]], list[str]]:
                 gaps.add("FLYWAY_MIGRATIONS_UNOBSERVED")
                 continue
             for migration in migrations:
+                budget.consume()
                 if not isinstance(migration, dict):
                     gaps.add("MIGRATION_RECORD_UNREADABLE")
                     continue
@@ -170,6 +174,7 @@ def _from_liquibase(body: Any) -> tuple[list[dict[str, Any]], list[str]]:
         raise ValueError("INVALID_MIGRATIONS_SHAPE")
     rows: list[dict[str, Any]] = []
     gaps: set[str] = set()
+    budget = AnalysisBudget()
     for context_name in sorted(body["contexts"]):
         context = body["contexts"][context_name]
         if not isinstance(context, dict) or not isinstance(
@@ -189,6 +194,7 @@ def _from_liquibase(body: Any) -> tuple[list[dict[str, Any]], list[str]]:
                 gaps.add("LIQUIBASE_CHANGESETS_UNOBSERVED")
                 continue
             for change in changes:
+                budget.consume()
                 if not isinstance(change, dict):
                     gaps.add("MIGRATION_RECORD_UNREADABLE")
                     continue
@@ -308,9 +314,22 @@ def apply_expected(
                 }
             )
             continue
-        if current and expected.checksum and current["checksum"] != expected.checksum:
-            gaps.append("CHECKSUM_MISMATCH")
-            current["attentionRequired"] = True
+        if current and expected.checksum:
+            if current["checksum"] is None:
+                gaps.append("CHECKSUM_UNOBSERVED")
+                continue
+            if expected.engine == "liquibase":
+                baseline_algorithm = _ALGORITHM.match(expected.checksum)
+                actual_algorithm = current["checksumAlgorithm"]
+                if baseline_algorithm is None or actual_algorithm is None:
+                    gaps.append("CHECKSUM_ALGORITHM_UNOBSERVED")
+                    continue
+                if baseline_algorithm.group(1) != actual_algorithm:
+                    gaps.append("CHECKSUM_ALGORITHM_INCOMPATIBLE")
+                    continue
+            if current["checksum"] != expected.checksum:
+                gaps.append("CHECKSUM_MISMATCH")
+                current["attentionRequired"] = True
     return rows, gaps, "baselineInferred"
 
 
@@ -319,7 +338,7 @@ def normalize_migrations(
 ) -> tuple[list[dict[str, Any]], list[str], str]:
     rows: list[dict[str, Any]] = []
     gaps: list[str] = []
-    invalid_engines: set[str] = set()
+    complete_engines: set[str] = set()
     for engine, body, parser in (
         ("flyway", flyway, _from_flyway),
         ("liquibase", liquibase, _from_liquibase),
@@ -328,15 +347,20 @@ def normalize_migrations(
             continue
         try:
             parsed, parsed_gaps = parser(body)
+        except AnalysisLimit:
+            # Budget exhaustion is not malformed upstream evidence.
+            gaps.append("GRAPH_LIMIT_REACHED")
+            continue
         except (ValueError, TypeError, KeyError):
-            invalid_engines.add(engine)
             gaps.append(engine.upper() + "_EVIDENCE_INVALID")
             continue
         rows.extend(parsed)
         gaps.extend(parsed_gaps)
+        if not parsed_gaps:
+            complete_engines.add(engine)
     comparison = replace(
         query,
-        expected=tuple(e for e in query.expected if e.engine not in invalid_engines),
+        expected=tuple(e for e in query.expected if e.engine in complete_engines),
     )
     rows, expected_gaps, visibility = apply_expected(rows, comparison)
     gaps.extend(expected_gaps)

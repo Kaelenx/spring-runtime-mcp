@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from typing import Any
+import re
+from urllib.parse import unquote
 
 from ..contracts.definitions import glob_matches
 from ..models.common import AnalysisBudget, AnalysisLimit
 from ..models.queries import OpenApiQuery
 
 _EXPANSION_LIMIT_GAP = "REF_EXPANSION_LIMIT"
+_OAS_DIALECT = "https://spec.openapis.org/oas/3.1/dialect/base"
+_DIALECTS = frozenset({_OAS_DIALECT, "https://json-schema.org/draft/2020-12/schema"})
 
 _METHODS = {
     "get",
@@ -46,11 +50,21 @@ def _pointer(document: dict[str, Any], ref: str) -> Any:
     if not ref.startswith("#/"):
         return None
     node: Any = document
-    for raw in ref[2:].split("/"):
+    try:
+        fragment = unquote(ref[2:], errors="strict")
+    except UnicodeError:
+        return None
+    for raw in fragment.split("/"):
+        if re.search(r"~(?![01])", raw):
+            return None
         part = raw.replace("~1", "/").replace("~0", "~")
         if isinstance(node, dict) and part in node:
             node = node[part]
-        elif isinstance(node, list) and part.isdigit() and int(part) < len(node):
+        elif (
+            isinstance(node, list)
+            and re.fullmatch(r"0|[1-9][0-9]*", part)
+            and int(part) < len(node)
+        ):
             node = node[int(part)]
         else:
             return None
@@ -85,6 +99,15 @@ class _Expander:
         self.gaps: set[str] = set()
         self.blocked_name: str | None = None
         self._exhausted = False
+        self.is_31 = str(document.get("openapi", "")).startswith("3.1.")
+        self.dialect = document.get("jsonSchemaDialect", _OAS_DIALECT)
+        self._targets: dict[str, Any] = {}
+
+    def target(self, ref: str) -> Any:
+        # Cache pointer lookup separately from path-local cycle detection.
+        if ref not in self._targets:
+            self._targets[ref] = _pointer(self.document, ref)
+        return self._targets[ref]
 
     def _consume(self) -> bool:
         """Charge one expansion visit; False once the shared budget is spent."""
@@ -109,9 +132,35 @@ class _Expander:
         if not isinstance(schema, dict):
             self.gaps.add("OPENAPI_SCHEMA_UNREADABLE")
             return {"referenceState": "invalid"}, False
+        dialect = schema.get("$schema", self.dialect)
+        if not isinstance(dialect, str) or dialect not in _DIALECTS:
+            self.gaps.add("OPENAPI_SCHEMA_DIALECT_UNSUPPORTED")
+            return {
+                "referenceState": "unsupported",
+                "omissionCodes": ["OPENAPI_SCHEMA_DIALECT_UNSUPPORTED"],
+            }, False
+        if any(key in schema for key in ("$id", "$dynamicRef", "$dynamicAnchor")):
+            self.gaps.add("OPENAPI_SCHEMA_BASE_UNSUPPORTED")
+            return {
+                "referenceState": "unsupported",
+                "omissionCodes": ["OPENAPI_SCHEMA_BASE_UNSUPPORTED"],
+            }, False
         ref = schema.get("$ref")
         if isinstance(ref, str):
-            return self._resolve(ref, depth, seen)
+            resolved, complete = self._resolve(ref, depth, seen)
+            if self.is_31 and set(schema) - {
+                "$ref",
+                "description",
+                "summary",
+                "title",
+                "example",
+                "examples",
+                "default",
+            }:
+                sibling, sibling_complete = self._project(schema, depth, seen)
+                # Conjunction preserves conflicting constraints without flattening.
+                return {"allOf": [resolved, sibling]}, complete and sibling_complete
+            return resolved, complete
         return self._project(schema, depth, seen)
 
     def _resolve(
@@ -120,19 +169,23 @@ class _Expander:
         if not ref.startswith("#"):
             self.gaps.add("REF_EXTERNAL_BLOCKED")
             return {"referenceState": "externalBlocked"}, False
+        if len(ref) > 512 or not ref.startswith("#/"):
+            self.gaps.add("REF_INVALID")
+            return {"referenceState": "invalid"}, False
         if ref in seen:
             self.gaps.add("REF_CYCLE")
             return {"$ref": ref, "referenceState": "cycle"}, False
         if depth >= self.max_depth:
             self.gaps.add("REF_DEPTH_LIMIT")
             self.blocked_name = self.blocked_name or _schema_name(ref)
-            target = _pointer(self.document, ref)
+            target = self.target(ref)
             kind = target.get("type") if isinstance(target, dict) else None
             return {
                 "type": kind if isinstance(kind, str) else "object",
                 "referenceState": "depthLimit",
+                "$ref": ref,
             }, False
-        target = _pointer(self.document, ref)
+        target = self.target(ref)
         if not isinstance(target, dict):
             self.gaps.add("REF_INVALID")
             return {"$ref": ref, "referenceState": "invalid"}, False
@@ -146,6 +199,31 @@ class _Expander:
     ) -> tuple[dict[str, Any], bool]:
         projected: dict[str, Any] = {}
         complete = True
+        supported = _SCHEMA_KEYS | {
+            "$ref",
+            "properties",
+            "items",
+            "additionalProperties",
+            "allOf",
+            "oneOf",
+            "anyOf",
+        }
+        omitted = {
+            "description",
+            "summary",
+            "title",
+            "example",
+            "examples",
+            "default",
+            "$defs",
+            "$schema",
+        }
+        if any(
+            key not in supported | omitted and not key.startswith("x-")
+            for key in schema
+        ):
+            self.gaps.add("OPENAPI_SCHEMA_UNSUPPORTED")
+            complete = False
         for key in _SCHEMA_KEYS:
             if key not in schema:
                 continue
@@ -173,7 +251,8 @@ class _Expander:
                     }, False
                 kept[name] = child
                 complete = complete and child_complete
-                if len(kept) >= 50:
+                if len(kept) >= 50 and len(properties) > 50:
+                    self.gaps.add("OPENAPI_PROPERTY_LIMIT")
                     complete = False
                     break
             projected["properties"] = kept
@@ -186,6 +265,38 @@ class _Expander:
                 }, False
             projected["items"] = child
             complete = complete and child_complete
+        if "additionalProperties" in schema:
+            additional = schema["additionalProperties"]
+            if isinstance(additional, bool):
+                projected["additionalProperties"] = additional
+            else:
+                child, child_complete = self.expand(additional, depth, seen)
+                projected["additionalProperties"] = child
+                complete = complete and child_complete
+        for key in ("allOf", "oneOf", "anyOf"):
+            if key not in schema:
+                continue
+            raw = schema[key]
+            if not isinstance(raw, list) or not raw:
+                self.gaps.add("OPENAPI_SCHEMA_UNREADABLE")
+                complete = False
+                continue
+            children = []
+            for part in raw[:16]:
+                child, child_complete = self.expand(part, depth, seen)
+                children.append(child)
+                complete = complete and child_complete
+                if self._exhausted:
+                    return {
+                        "referenceState": "unsupported",
+                        "omissionCodes": [_EXPANSION_LIMIT_GAP],
+                    }, False
+            projected[key] = children
+            if len(raw) > 16:
+                self.gaps.add("OPENAPI_COMPOSITION_LIMIT")
+                complete = False
+        if not complete:
+            self.gaps.add("OPENAPI_SCHEMA_PARTIAL")
         return projected, complete
 
 
@@ -200,13 +311,13 @@ def _object(value: Any, expander: _Expander) -> dict[str, Any] | None:
         if ref in seen:
             expander.gaps.add("REF_CYCLE")
             return None
-        if len(seen) >= expander.max_depth or not expander._consume():
+        if len(seen) >= 8 or not expander._consume():
             expander.gaps.add(
                 "REF_DEPTH_LIMIT" if not expander._exhausted else _EXPANSION_LIMIT_GAP
             )
             return None
         seen.add(ref)
-        value = _pointer(expander.document, ref)
+        value = expander.target(ref)
     if not isinstance(value, dict):
         expander.gaps.add("OPENAPI_OBJECT_UNREADABLE")
         return None
@@ -313,8 +424,9 @@ def normalize_openapi(
             continue
         if query.path_pattern and not glob_matches(query.path_pattern, path):
             continue
-        operations = paths[path]
-        if not isinstance(operations, dict):
+        operations = _object(paths[path], expander)
+        if operations is None:
+            expander.gaps.add("OPENAPI_PATH_UNREADABLE")
             continue
         for method in sorted(operations):
             if method not in _METHODS:
@@ -336,7 +448,9 @@ def normalize_openapi(
                     if len(responses) >= 16:
                         complete = False
                         break
-                    entry = raw_responses[status]
+                    entry = _object(raw_responses[status], expander)
+                    if entry is None:
+                        complete = False
                     content = entry.get("content") if isinstance(entry, dict) else None
                     if not isinstance(content, dict) or not content:
                         responses.append(

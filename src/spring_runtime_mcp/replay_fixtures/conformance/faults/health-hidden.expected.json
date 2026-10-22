@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "2",
+  "status": "partial",
+  "source": {
+    "targetId": "local",
+    "snapshotId": "fixture-snapshot",
+    "observedAt": "2026-10-16T00:00:00Z",
+    "endpointIds": [
+      "health"
+    ],
+    "bootVersion": null,
+    "adapterVersion": "fixture-1",
+    "policyVersion": "fixture-1"
+  },
+  "data": {
+    "overallStatus": "DOWN",
+    "activeGroup": "application",
+    "items": [
+      {
+        "id": "item_1",
+        "endpointId": "health",
+        "observationId": "fixture_observation",
+        "componentPath": [],
+        "parentId": null,
+        "status": "DOWN",
+        "details": [],
+        "errorType": null,
+        "remediationCodes": [
+          "REVIEW_HEALTH_DETAILS_VISIBILITY"
+        ],
+        "childrenComplete": false
+      }
+    ]
+  },
+  "totalMatched": 1,
+  "truncated": false,
+  "truncationReasons": [],
+  "coverage": {
+    "state": "partial",
+    "scope": "contract_fixture",
+    "gaps": [
+      "HEALTH_DETAILS_NOT_VISIBLE"
+    ]
+  },
+  "warnings": [],
+  "redactions": [],
+  "nextCursor": null,
+  "nextAction": {
+    "kind": "remediate",
+    "reasonCode": "HEALTH_DETAILS_NOT_VISIBLE",
+    "filterSuggestions": []
+  },
+  "errors": []
+}

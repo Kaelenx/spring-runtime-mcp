@@ -1,0 +1,46 @@
+{
+  "provenance": "synthetic",
+  "realInstanceIntegrationVerified": false,
+  "profiles": [
+    {
+      "id": "boot-2.7-servlet",
+      "declaredVersion": "2.7.18",
+      "stack": "mvc",
+      "namespace": "javax",
+      "mediaTypes": [
+        "v2",
+        "v3"
+      ]
+    },
+    {
+      "id": "boot-3.4-servlet",
+      "declaredVersion": "3.4.13",
+      "stack": "mvc",
+      "namespace": "jakarta",
+      "mediaTypes": [
+        "v3"
+      ]
+    },
+    {
+      "id": "boot-4.1-webflux",
+      "declaredVersion": "4.1.1",
+      "stack": "webflux",
+      "namespace": "jakarta",
+      "mediaTypes": [
+        "v3"
+      ]
+    }
+  ],
+  "structureReferences": [
+    "https://docs.spring.io/spring-boot/3.4/api/rest/actuator/startup.html",
+    "https://docs.spring.io/spring-boot/3.4/api/rest/actuator/mappings.html",
+    "https://docs.spring.io/spring-boot/3.4/api/rest/actuator/liquibase.html",
+    "https://docs.spring.io/spring-boot/4.1/api/rest/actuator/mappings.html"
+  ],
+  "notes": [
+    "Declared version is a synthetic scenario label, not an observed target version.",
+    "Native WebFlux descriptors use ServerWebExchange; supplementary Jakarta servlet descriptor is kept separate.",
+    "Flyway/Liquibase endpoints do not guarantee pending migration inventory.",
+    "Liquibase does not guarantee execution duration or a Flyway-style version."
+  ]
+}

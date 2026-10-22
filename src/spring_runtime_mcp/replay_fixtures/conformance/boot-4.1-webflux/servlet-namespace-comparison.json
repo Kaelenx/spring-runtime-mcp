@@ -1,0 +1,4 @@
+{
+  "provenance": "synthetic supplementary MVC example, not a WebFlux handler",
+  "descriptor": "(Ljakarta/servlet/http/HttpServletRequest;)Ljava/lang/String;"
+}

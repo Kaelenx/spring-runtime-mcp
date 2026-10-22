@@ -1,0 +1,96 @@
+{
+  "verifiedAt": "2026-10-22T08:19:39.880467+00:00",
+  "bootVersion": "3.5.16",
+  "java": 21,
+  "webStack": "mvc",
+  "authentication": "Bearer",
+  "database": "disposable-postgresql-16",
+  "target": "registered-loopback",
+  "tools": [
+    {
+      "tool": "springboot_inspect_beans",
+      "status": "partial",
+      "totalMatched": null,
+      "coverage": "partial",
+      "gaps": [
+        "ASSOCIATION_LIMIT",
+        "BEAN_GRAPH_INCOMPLETE",
+        "GRAPH_LIMIT_REACHED",
+        "NOT_FOUND_IN_COMPLETE_VISIBLE_HIERARCHY",
+        "REDACTED_IDENTIFIERS",
+        "SOURCE_CATALOG_UNPROVIDED"
+      ],
+      "truncated": true
+    },
+    {
+      "tool": "springboot_inspect_beans",
+      "status": "partial",
+      "totalMatched": null,
+      "coverage": "partial",
+      "gaps": [
+        "BEAN_GRAPH_INCOMPLETE",
+        "BEAN_INDEX_INCOMPLETE",
+        "CONDITION_EVIDENCE_INCOMPLETE",
+        "CONDITION_REPORT_INCOMPLETE",
+        "NOT_FOUND_IN_COMPLETE_VISIBLE_HIERARCHY",
+        "REDACTED_IDENTIFIERS",
+        "SOURCE_CATALOG_UNPROVIDED",
+        "SOURCE_FACTS_UNAVAILABLE",
+        "UNKNOWN_CONDITION_GRAMMAR"
+      ],
+      "truncated": false
+    },
+    {
+      "tool": "springboot_verify_mappings",
+      "status": "ok",
+      "totalMatched": 1,
+      "coverage": "complete",
+      "gaps": [],
+      "truncated": false
+    },
+    {
+      "tool": "springboot_diagnose_health",
+      "status": "partial",
+      "totalMatched": null,
+      "coverage": "partial",
+      "gaps": [
+        "HEALTH_DETAILS_NOT_VISIBLE"
+      ],
+      "truncated": false
+    },
+    {
+      "tool": "springboot_check_migrations",
+      "status": "ok",
+      "totalMatched": 1,
+      "coverage": "complete",
+      "gaps": [],
+      "truncated": false
+    },
+    {
+      "tool": "springboot_analyze_startup",
+      "status": "partial",
+      "totalMatched": 66,
+      "coverage": "partial",
+      "gaps": [
+        "MAX_RESULTS",
+        "STARTUP_DEPTH_LIMIT",
+        "STARTUP_TIMELINE_INCOMPLETE"
+      ],
+      "truncated": true
+    },
+    {
+      "tool": "springboot_detect_drift",
+      "status": "partial",
+      "totalMatched": null,
+      "coverage": "partial",
+      "gaps": [
+        "BEAN_INDEX_INCOMPLETE",
+        "NOT_FOUND_IN_COMPLETE_VISIBLE_HIERARCHY"
+      ],
+      "truncated": false
+    }
+  ],
+  "anonymousAccess": "denied",
+  "sourceRevision": "b7c54641df80ad9502ee1e3cc95a21d494cdd75d",
+  "targetProcessStopped": true
+}

@@ -10,7 +10,9 @@ from .analyze_startup import analyze_startup
 from .check_migrations import check_migrations
 from .detect_drift import detect_drift
 from .diagnose_health import diagnose_health
-from .inspect_beans import Services, failed, inspect_beans
+from ..services import Services
+from .inspect_beans import inspect_beans
+from ..diagnostics import failed
 from .inspect_config import inspect_config
 from .search_openapi import search_openapi
 from .verify_mappings import verify_mappings

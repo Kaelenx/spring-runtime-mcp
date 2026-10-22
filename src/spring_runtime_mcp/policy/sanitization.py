@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from typing import Any
 from urllib.parse import quote, unquote
 
-from ..models.common import NormalizationError
+from ..models.common import NormalizationError, remaining_seconds
 from ..transport.bounded_json import loads_bounded, validate_tree
 
 MARKER = "[REDACTED_BY_MCP]"
@@ -271,6 +271,7 @@ class SanitizerPipeline:
         self._secrets = tuple(sorted(variants))
 
     def high_risk(self, value: str, *, _encoding_depth: int = 0) -> bool:
+        remaining_seconds()
         if value == MARKER:
             return False
         if len(value) > 65_536:
@@ -502,11 +503,9 @@ class SanitizerPipeline:
                 if field == "nextAction":
                     return MARKER
                 if field == "scope":
-                    return (
-                        item
-                        if item == "registered target Bean contexts"
-                        else self.identifier(item)
-                    )
+                    from .output_guard import LOCAL_PROSE
+
+                    return item if item in LOCAL_PROSE else self.identifier(item)
                 if field in identifier_fields or field in identifier_arrays:
                     return self.identifier(item)
                 if field == "resource":

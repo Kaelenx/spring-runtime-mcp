@@ -7,6 +7,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from ..models.common import AnalysisBudget
+
 from ..contracts.definitions import glob_matches
 
 _DURATION = re.compile(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?\Z")
@@ -20,6 +22,16 @@ def _nanos(text: str) -> int | None:
     minutes = Decimal(matched.group(2) or 0)
     seconds = Decimal(matched.group(3) or 0)
     return int((hours * 3600 + minutes * 60 + seconds) * Decimal(1_000_000_000))
+
+
+def _timestamp(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return value if parsed.tzinfo is not None else None
 
 
 def _bottleneck(name: str) -> str:
@@ -48,9 +60,11 @@ def normalize_startup(
     version = body.get("springBootVersion")
     version = version if isinstance(version, str) and len(version) <= 64 else None
     gaps: set[str] = set()
+    budget = AnalysisBudget()
     records: dict[str, dict[str, Any]] = {}
     order: list[str] = []
     for event in events:
+        budget.consume()
         if len(order) >= 500:
             gaps.add("STARTUP_NODE_LIMIT")
             break
@@ -81,6 +95,8 @@ def normalize_startup(
         tags = []
         raw_tags = step.get("tags", [])
         if isinstance(raw_tags, list):
+            if len(raw_tags) > 10:
+                gaps.add("STARTUP_TAG_LIMIT")
             for tag in raw_tags[:10]:
                 if not isinstance(tag, dict) or not isinstance(tag.get("key"), str):
                     continue
@@ -92,13 +108,15 @@ def normalize_startup(
                     }
                 )
         name = step.get("name") if isinstance(step.get("name"), str) else ""
+        raw_started = event.get("startTime")
+        started_at = _timestamp(raw_started)
+        if isinstance(raw_started, str) and started_at is None:
+            gaps.add("STARTUP_TIMING_UNOBSERVED")
         records[step_id] = {
             "stepId": step_id,
             "parentStepId": parent_id,
             "name": name[:256],
-            "startedAt": event.get("startTime")
-            if isinstance(event.get("startTime"), str)
-            else None,
+            "startedAt": started_at,
             "durationNanos": None if nanos is None else str(nanos),
             "durationMs": None if nanos is None else nanos / 1_000_000,
             "tags": tags,
@@ -117,6 +135,7 @@ def normalize_startup(
         seen = {step_id}
         cursor = parent
         while cursor is not None:
+            budget.consume()
             if cursor in seen:
                 row["relationState"] = "cycle"
                 gaps.add("STARTUP_CYCLE")

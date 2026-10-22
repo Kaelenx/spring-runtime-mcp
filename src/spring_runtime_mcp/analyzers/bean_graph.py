@@ -70,6 +70,34 @@ def build_dependency_graph(graph: BeanGraph, *, budget: AnalysisBudget) -> BeanG
     )
 
 
+def visible_beans(
+    graph: BeanGraph, start: ContextKey, *, budget: AnalysisBudget | None = None
+) -> tuple[BeanKey, ...] | None:
+    """List type-query candidates with the same shadowing rules as name lookup."""
+    budget = budget or AnalysisBudget()
+    current: ContextKey | None = start
+    seen: set[ContextKey] = set()
+    occupied: set[str] = set()
+    selected: list[BeanKey] = []
+    while current is not None:
+        budget.consume()
+        if current in seen:
+            return None
+        seen.add(current)
+        context = graph.contexts.get(current)
+        if context is None or not context.complete or context.parent.state != "known":
+            return None
+        for key in sorted(graph.beans):
+            if key.context == current:
+                budget.consume()
+                if key.canonical_name not in occupied:
+                    selected.append(key)
+        # A local alias can also hide an ancestor's canonical name.
+        occupied.update(graph.names.get(current, {}))
+        current = context.parent.value
+    return tuple(selected)
+
+
 def slice_dependencies(
     graph: BeanGraph,
     roots: tuple[BeanKey, ...],

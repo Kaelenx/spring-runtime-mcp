@@ -4,7 +4,7 @@
 
 ### 1.1 范围与事实边界
 
-本文细化 [SPEC.md](../../SPEC.md)，所有读取先经过[安全架构规格书](security-and-sanitization.md)的注册表、连接守卫、只读和脱敏管道。当前仓库尚无运行实现；接口和验收项是实施要求，不代表已验证全部版本。设计覆盖 Boot 2.7.x、3.0–3.4.x 和 4.x；正式支持必须对应具体小版本、MVC/WebFlux、媒体类型和真实脱敏 fixture。未验证版本可以做结构识别，但不得标为正式兼容。
+本文细化 [SPEC.md](../../SPEC.md)，所有读取先经过[安全架构规格书](security-and-sanitization.md)的注册表、连接守卫、只读和脱敏管道。当前已有归一化内核和回环 HTTP/SDK 宿主；本文的完整探测、路径回退等仍是目标，不能视为全部落地。设计覆盖 Boot 2.7.x、3.x 和 4.x；本轮真实验收仅覆盖 Boot 3.5.16 / MVC / JWT，见 [Shop 记录](../../examples/tdd-runtime/README.md)，其余矩阵主要是合成 fixtures。正式支持必须对应具体小版本、MVC/WebFlux、媒体类型与验收范围；未验证组合只能做结构识别。
 
 八个**源诊断域**为 health、beans、conditions、mappings、flyway、liquibase、startup、OpenAPI。Drift Detection 消费这些模型，不另算一个源域。契约版本 2 另增配置支持域及 springboot_inspect_config：默认关闭、显式登记后允许受控读取 env/configprops，禁止完整原始值树出站；其投影见[调用策略](../contracts/tool-calling-policy.md)。此变更替代先前网络读取禁令，不改变下表八个核心源域。
 

@@ -14,13 +14,14 @@ from .models.source_catalog import SourceCatalog
 from .policy.sanitization import SanitizerPipeline
 from .policy.configuration import ConfigReadPolicy
 from .snapshots import SnapshotStore
-from .tools.inspect_beans import Services, failed
+from .services import Services
+from .diagnostics import failed
 from .transport.bounded_json import loads_bounded
 from .transport.fixture_files import read_fixture
 from .transport.responses import serialize_response
 from .transport.stdio import quiet_console, seal_console
 
-FIXTURES = Path(__file__).resolve().parents[2] / "tests/fixtures/bean_graph"
+FIXTURES = Path(__file__).resolve().parent / "replay_fixtures/bean_graph"
 CONFORMANCE = FIXTURES.parent / "conformance"
 PROFILES = ("boot-2.7-servlet", "boot-3.4-servlet", "boot-4.1-webflux")
 _PROFILE_FILES = {

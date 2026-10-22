@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ..models.common import AnalysisBudget
+
 from ..contracts.definitions import glob_matches
 
 _PREDICATE_CONDITION = re.compile(
@@ -141,6 +143,7 @@ def normalize_mappings(
     if not isinstance(body, dict) or not isinstance(body.get("contexts"), dict):
         raise ValueError("INVALID_MAPPINGS_SHAPE")
     gaps: set[str] = set()
+    budget = AnalysisBudget()
     found: list[dict[str, Any]] = []
     for context_name in sorted(body["contexts"]):
         if not isinstance(context_name, str):
@@ -174,6 +177,7 @@ def normalize_mappings(
                     gaps.add("MAPPINGS_UNOBSERVED")
                     continue
                 for record in records:
+                    budget.consume()
                     if not isinstance(record, dict):
                         gaps.add("MAPPING_RECORD_UNREADABLE")
                         continue
@@ -216,29 +220,41 @@ def normalize_mappings(
                     methods: list[str] = []
                     condition_rows: list[dict[str, Any]] = []
                     complete = isinstance(conditions_raw, dict)
+                    methods_complete = isinstance(conditions_raw, dict)
                     predicate_parsed = False
                     if isinstance(conditions_raw, dict):
-                        raw_patterns = conditions_raw.get("patterns", [])
-                        raw_methods = conditions_raw.get("methods", [])
+                        raw_patterns = conditions_raw.get("patterns")
+                        raw_methods = conditions_raw.get("methods")
                         if isinstance(raw_patterns, list):
-                            patterns = [
-                                item
-                                for item in raw_patterns
-                                if isinstance(item, str) and len(item) <= 1024
-                            ][:16]
-                            if len(raw_patterns) > 16:
+                            for item in raw_patterns:
+                                if isinstance(item, str) and 0 < len(item) <= 1024:
+                                    patterns.append(item)
+                                else:
+                                    complete = False
+                                    gaps.add("MAPPING_PATTERN_UNREADABLE")
+                            if len(patterns) > 16:
+                                patterns = patterns[:16]
                                 complete = False
                                 gaps.add("MAPPING_PATH_LIMIT")
                         else:
                             complete = False
+                            gaps.add("MAPPING_PATTERN_UNREADABLE")
                         if isinstance(raw_methods, list):
-                            methods = [
-                                item
-                                for item in raw_methods
-                                if isinstance(item, str) and item in _METHODS
-                            ][:9]
+                            for item in raw_methods:
+                                if isinstance(item, str) and item in _METHODS:
+                                    methods.append(item)
+                                else:
+                                    complete = False
+                                    methods_complete = False
+                                    gaps.add("MAPPING_METHOD_UNREADABLE")
+                            if len(methods) > 9:
+                                methods = methods[:9]
+                                complete = False
+                                gaps.add("MAPPING_METHOD_LIMIT")
                         else:
                             complete = False
+                            methods_complete = False
+                            gaps.add("MAPPING_METHOD_UNREADABLE")
                         condition_rows, condition_complete = _conditions(conditions_raw)
                         complete = complete and condition_complete
                     elif isinstance(record.get("predicate"), str):
@@ -250,19 +266,23 @@ def normalize_mappings(
                         ) = _parse_predicate(record["predicate"])
                         if predicate_parsed:
                             complete = True
+                            methods_complete = True
                         else:
                             patterns = []
                             methods = []
                             condition_rows = []
                             complete = False
+                            methods_complete = False
                             gaps.add("MAPPING_PREDICATE_UNPARSED")
                     else:
+                        complete = False
+                        methods_complete = False
                         gaps.add("MAPPING_CONDITIONS_UNOBSERVED")
                     if path_pattern and not any(
                         glob_matches(path_pattern, pattern) for pattern in patterns
                     ):
                         continue
-                    unrestricted = not methods
+                    unrestricted = not methods and methods_complete
                     if http_method and not unrestricted and http_method not in methods:
                         continue
                     if controller_pattern and not (

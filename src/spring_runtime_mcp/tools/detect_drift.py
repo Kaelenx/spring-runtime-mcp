@@ -13,13 +13,15 @@ from ..contracts.definitions import validate_arguments
 from ..models.common import NormalizationError
 from ..models.queries import DriftQuery
 from ..transport.response_gate import EndpointReadError
-from .inspect_beans import Services, error, failed, partial, safe_code
-from .support import finalize, read_checked, resume, shell, stamp
+from ..services import Services
+from ..diagnostics import error, failed, partial, safe_code
+from .support import tool_handler, finalize, read_checked, resume, shell, stamp
 
 _VERSION = re.compile(r"[A-Za-z0-9_.-]{1,64}\Z")
-_SILENT_STARTUP = frozenset(
+_STARTUP_UNAVAILABLE = frozenset(
     {"CAPABILITY_DISABLED", "ENDPOINT_NOT_EXPOSED", "STARTUP_DATA_UNAVAILABLE"}
 )
+_STARTUP_EVIDENCE_GAP = "STARTUP_EVIDENCE_UNAVAILABLE"
 _DIFF_FIELDS = (
     "id",
     "dimension",
@@ -149,21 +151,27 @@ def _assign(rows: list[dict[str, Any]], prefix: str) -> None:
 
 async def _optional_startup(
     services: Services, query: DriftQuery, snapshot: str, result: dict[str, Any]
-) -> tuple[Any | None, list[dict[str, Any]]]:
+) -> tuple[Any | None, list[dict[str, Any]], list[str]]:
     if query.source_modified_at is None:
-        return None, []
+        return None, [], []
     try:
         observation = await read_checked(services, query.target_id, "startup", snapshot)
     except NormalizationError as exc:
-        if safe_code(exc.code) in _SILENT_STARTUP:
-            return None, []
-        return None, [
-            error(
-                exc.code,
-                "startup",
-                exc.http_status if isinstance(exc, EndpointReadError) else None,
-            )
-        ]
+        if safe_code(exc.code) in _STARTUP_UNAVAILABLE:
+            # The caller explicitly supplied sourceModifiedAt, so startup timing
+            # is required evidence. Missing it is a gap, never a silent success.
+            return None, [], [_STARTUP_EVIDENCE_GAP]
+        return (
+            None,
+            [
+                error(
+                    exc.code,
+                    "startup",
+                    exc.http_status if isinstance(exc, EndpointReadError) else None,
+                )
+            ],
+            [],
+        )
     stamp(result, observation, "startup", snapshot)
     version = (
         observation.body.get("springBootVersion")
@@ -172,9 +180,10 @@ async def _optional_startup(
     )
     if isinstance(version, str) and _VERSION.fullmatch(version):
         result["source"]["bootVersion"] = version
-    return observation.body, []
+    return observation.body, [], []
 
 
+@tool_handler
 async def detect_drift(
     arguments: Mapping[str, Any], services: Services
 ) -> dict[str, Any]:
@@ -238,7 +247,7 @@ async def detect_drift(
                 endpoint=first["endpointId"],
                 http_status=first["httpStatus"],
             )
-        startup_body, startup_errors = await _optional_startup(
+        startup_body, startup_errors, startup_gaps = await _optional_startup(
             services, query, snapshot, result
         )
         failures.extend(startup_errors)
@@ -279,12 +288,18 @@ async def detect_drift(
             ),
         }
         result["errors"] = failures[:8]
-        gaps = list(compared["gaps"]) + [safe_code(item["code"]) for item in failures]
+        gaps = (
+            list(compared["gaps"])
+            + [safe_code(item["code"]) for item in failures]
+            + startup_gaps
+        )
+        if startup_gaps:
+            compared["incomplete"] = True
         if compared["incomplete"] and not gaps:
             gaps.append("EVIDENCE_INCOMPLETE")
         result["totalMatched"] = (
             None
-            if compared["incomplete"] or failures
+            if compared["incomplete"] or failures or startup_gaps
             else len(missing)
             + len(unexpected)
             + (

@@ -129,6 +129,20 @@ def test_readonly_static_inventory_has_one_request_constructor_and_no_execution_
     for path in root.rglob("*.py"):
         relative = path.relative_to(root).as_posix()
         tree = ast.parse(path.read_text())
+        # SDK memory-stream sends are protocol output, not socket writes.
+        # Only the host's final budget guard may use this exact send site.
+        sdk_sends = {
+            id(call)
+            for owner in tree.body
+            if relative == "server.py"
+            and isinstance(owner, ast.ClassDef)
+            and owner.name == "_BoundedWriteStream"
+            for call in ast.walk(owner)
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and ast.unparse(call.func) == "self._stream.send"
+        }
+        assert len(sdk_sends) == (1 if relative == "server.py" else 0)
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 assert not any(blocked(alias.name, relative) for alias in node.names), (
@@ -150,18 +164,23 @@ def test_readonly_static_inventory_has_one_request_constructor_and_no_execution_
                         and node.func.value.attr == "snapshots"
                         and path.name in {"inspect_beans.py", "support.py"}
                     )
-                    assert cache_put or node.func.attr not in {
-                        "post",
-                        "put",
-                        "patch",
-                        "delete",
-                        "system",
-                        "popen",
-                        "send",
-                        "sendall",
-                        "sendto",
-                        "sendmsg",
-                    }, path
+                    assert (
+                        cache_put
+                        or id(node) in sdk_sends
+                        or node.func.attr
+                        not in {
+                            "post",
+                            "put",
+                            "patch",
+                            "delete",
+                            "system",
+                            "popen",
+                            "send",
+                            "sendall",
+                            "sendto",
+                            "sendmsg",
+                        }
+                    ), path
                     if node.func.attr == "request":
                         request_calls.append((path.name, node))
     by_file: dict[str, list[ast.Call]] = {}

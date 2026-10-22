@@ -22,7 +22,7 @@ Because an agent that can `curl` an Actuator can also `POST /actuator/shutdown`,
 | Writes | Impossible. Only `GET` on a fixed endpoint table. `POST /actuator/startup` (which drains the buffer) is refused. |
 | SSRF / target drift | Target origin is registered at process start, never taken from tool arguments. Loopback-only today, numeric-address pinning and peer verification before any HTTP write, redirects disabled, environment proxies ignored. |
 | Secrets | `SanitizerPipeline` whitelists fields and redacts credentials, connection strings, bearer tokens and PEM blobs; `output_guard` re-checks every frame and cache entry before it leaves the process. |
-| Context blow-up | `maxResults` defaults to and caps at 50; every full JSON-RPC response (structured content + text copy) is at most 16,384 UTF-8 bytes, with `totalMatched`, `truncated`, `coverage` and a `nextAction` hint. |
+| Context blow-up | `maxResults` defaults to and caps at 50; every tool result frame (structured content + text copy) is at most 16,384 UTF-8 bytes, with `totalMatched`, `truncated`, `coverage` and a `nextAction` hint. |
 | False certainty | Missing or truncated evidence comes back as `partial`/`unknown` with gaps listed. The server never turns "not visible" into "does not exist". |
 | Prompt injection | Upstream free text (OpenAPI descriptions, health messages) is never echoed; messages are local templates only. |
 
@@ -49,8 +49,8 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). No JDK, Docker, mode
 
 ```bash
 git clone https://github.com/Kaelenx/spring-runtime-mcp.git && cd spring-runtime-mcp
-uv run --no-project --with pytest==8.4.2 --with jsonschema==4.25.1 --with mcp python -m pytest -q
-PYTHONPATH=src uv run --no-project --with jsonschema==4.25.1 python -m spring_runtime_mcp.replay \
+uv run --locked python -m pytest -q
+uv run --locked python -m spring_runtime_mcp.replay \
   --scenario stripe-missing --tool springboot_inspect_beans \
   --arguments-json '{"typePattern":"example.PaymentGateway","contextId":"application","conditionDepth":4}'
 ```
@@ -108,8 +108,18 @@ uv run --project /abs/path/to/spring-runtime-mcp spring-runtime-mcp --base-url h
 | `--base-url` | `SPRING_RUNTIME_BASE_URL` | `http://127.0.0.1:18081` |
 | `--target-id` | `SPRING_RUNTIME_TARGET_ID` | `local` |
 | `--timeout` | `SPRING_RUNTIME_TIMEOUT` | `5` |
+| `--source-catalog` | `SPRING_RUNTIME_SOURCE_CATALOG` | none |
+| `--token-env` | none (names the token variable) | no authentication |
+| `--config-prefix` | none (repeatable) | none |
+| `--config-property` | none (repeatable) | none |
+| `--config-profiles` | none | off |
+| `--config-allow-values` | none | off |
 
 `--base-url` is an origin (scheme, host, port) registered once at startup. There is no way to pass a URL, path or header through a tool call.
+
+For an existing Bearer-protected target, add `--token-env SHOP_ACTUATOR_TOKEN` and supply that environment variable to the server process. Only the variable name belongs in the command; token values stay in memory, bind to this origin, and enter the known-secret sanitization set. Invalid or missing credentials fail startup. See the [Shop acceptance example](examples/tdd-runtime/README.md) for a verified JWT setup.
+
+Configuration diagnostics remain off by default. To enable `springboot_inspect_config`, register at least one `--config-prefix` or `--config-property`; add `--config-allow-values` only when registered scalar values may be returned after sanitization, and `--config-profiles` when `springboot_detect_drift` should compare active profiles. A value permission without a selector is rejected at startup.
 
 ### 3. Register it with your agent
 
@@ -210,28 +220,29 @@ Always filter first. When `truncated` is `true`, follow `nextAction` to narrow t
 
 ## Status and limitations
 
-v0.1.0 is a working local MVP, not a validated product. What the test suite proves and what it does not:
+The v0.2.0 worktree includes the [2026-10-22 review fixes](docs/audits/comprehensive-remediation-2026-10-22.md). These changes have not been published. Verification and limits:
 
-- 729 offline tests, strict `mypy`, `ruff`, an AST-based red-team suite (only one module may import `http.client`/`socket`; no `print`, `eval`, `subprocess`, write verbs or raw socket sends anywhere in production code) and an independent JSON Schema contract validator all pass. Fixtures are **synthetic** Boot 2.7 / 3.x / 4.x and MVC / WebFlux shapes; HTTP integration tests talk only to a loopback fixture server started by the test itself.
-- No real Spring Boot version matrix has been accepted yet. Do not read "fixtures pass" as "supports every Boot version".
-- The stdio host is built on the official `mcp` Python SDK (v2, lowlevel `Server`), which owns handshake negotiation, initialization gating, JSON-RPC error mapping and cancellation. The rest of the stack — tool descriptors, output-contract validation, sanitization and the 16 KiB budget — is still this project's. Third-party client interoperability beyond a scripted stdio handshake is not yet claimed.
-- Targets are loopback-only. Remote HTTPS targets, credential binding (Basic/Bearer from env vars), custom management base paths and `/v3/api-docs` fallback are specified in [SPEC.md](SPEC.md) but not implemented.
-- Configuration diagnostics (`env`/`configprops`) are off by default on both sides and require explicit registration of allowed prefixes when enabled.
+- 782 tests, strict `mypy`, `ruff`, the AST-based red-team suite and independent JSON Schema validation pass. Default fixtures are **synthetic** Boot 2.7 / 3.x / 4.x and MVC / WebFlux shapes; HTTP integration tests use only test-created loopback services. Shared services enforce two reads per target and one 15-second tool deadline, including queue time and cooperative analysis.
+- A separate, explicitly authorized Shop check passed on Boot **3.5.16 / Java 21 / MVC / JWT / disposable PostgreSQL 16**. It used a committed source snapshot because the original working tree contains unfinished business changes. Hidden health details, incomplete source/condition evidence and bounded startup output remain `partial`. This sample does not establish a full version matrix.
+- The stdio host uses the official `mcp` Python SDK 2.x. An isolated wheel installation passed SDK client discovery and tool-error checks in both `legacy` and `2026-07-28` modes. Final tool frames are checked after SDK serialization as well as before it. Third-party desktop clients and a real TLS/SNI matrix remain unverified.
+- Targets are loopback-only. Bearer binding from a named environment variable is implemented; Basic/custom headers, remote target allowlists, custom management base paths and `/v3/api-docs` fallback remain unimplemented.
+- Configuration diagnostics (`env`/`configprops`) are off by default on both sides. Enable them only with explicit `--config-prefix`/`--config-property` registration; values stay masked unless `--config-allow-values` is also supplied.
 
 The full list, with the exact commands and counts behind each claim, is in [CHANGELOG.md](CHANGELOG.md). Audit history, including the 15 logic/boundary defects found and fixed in October 2026, is under [docs/audits](docs/audits).
 
 ## Development
 
 ```bash
-uv run --no-project --with pytest==8.4.2 --with jsonschema==4.25.1 --with mcp python -m pytest -q
-uv run --no-project --with mypy==1.18.2 --with jsonschema==4.25.1 --with mcp python -m mypy src/spring_runtime_mcp
-uv run --no-project --with jsonschema==4.25.1 python scripts/validate_tool_contract.py
-uv run --no-project --with ruff==0.14.1 ruff check src tests scripts
-uv run --no-project --with ruff==0.14.1 ruff format --check src tests scripts
+uv sync --dev --locked
+uv run --no-sync python -m pytest -q
+uv run --no-sync python -m mypy src/spring_runtime_mcp
+uv run --no-sync python scripts/validate_tool_contract.py
+uv run --no-sync ruff check src tests scripts
+uv run --no-sync ruff format --check src tests scripts
 uv build
 ```
 
-Add `--offline` once the tools are cached. Tests block outbound network by default; connector integration tests only ever reach a loopback fixture they start themselves.
+Add `--offline` to the initial sync once dependencies are cached. `uv.lock` fixes the tested runtime and development dependency versions; the wheel includes its tool Schema and `py.typed`. Tests block outbound network by default; real Shop acceptance is a separate operator-invoked script. CI and release share the same validation workflow, and publishing depends on all its jobs and a matching version tag.
 
 Layout: `src/spring_runtime_mcp/{transport,policy,models,adapters,analyzers,tools}` — protocol, networking, security policy and deterministic analysis are separate layers, and the dependency direction never reverses (adapters do not construct HTTP clients; tools never concatenate user strings into URLs). Public JSON is camelCase, Python is snake_case.
 

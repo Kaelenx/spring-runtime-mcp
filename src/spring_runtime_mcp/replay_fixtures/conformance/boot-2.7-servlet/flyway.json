@@ -1,0 +1,40 @@
+{
+  "contexts": {
+    "application": {
+      "flywayBeans": {
+        "ordersFlyway": {
+          "migrations": [
+            {
+              "type": "SQL",
+              "checksum": 12345,
+              "version": "1",
+              "description": "create ordersFlyway",
+              "script": "V1__create_tables.sql",
+              "state": "SUCCESS",
+              "installedBy": "fixture",
+              "installedOn": "2026-10-16T00:00:00Z",
+              "installedRank": 1,
+              "executionTime": 12
+            }
+          ]
+        },
+        "auditFlyway": {
+          "migrations": [
+            {
+              "type": "SQL",
+              "checksum": -54321,
+              "version": "1",
+              "description": "create auditFlyway",
+              "script": "V1__create_tables.sql",
+              "state": "SUCCESS",
+              "installedBy": "fixture",
+              "installedOn": "2026-10-16T00:00:00Z",
+              "installedRank": 1,
+              "executionTime": 12
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: pytest (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Offline fixture tests
+        run: uv run --no-project --with pytest==8.4.2 --with jsonschema==4.25.1 python -m pytest -q
+      - name: Tool contract validation
+        run: uv run --no-project --with jsonschema==4.25.1 python scripts/validate_tool_contract.py
+
+  lint:
+    name: mypy + ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+      - run: uv run --no-project --with mypy==1.18.2 --with jsonschema==4.25.1 python -m mypy src/spring_runtime_mcp
+      - run: uv run --no-project --with ruff==0.14.1 ruff check src tests scripts
+      - run: uv run --no-project --with ruff==0.14.1 ruff format --check src tests scripts
+
+  build:
+    name: wheel + stdio handshake
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+      - run: uv build
+      - name: Install wheel in a clean venv and complete initialize + tools/list
+        run: |
+          uv venv .ci-venv
+          uv pip install --python .ci-venv/bin/python dist/*.whl
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            | .ci-venv/bin/spring-runtime-mcp --base-url http://127.0.0.1:18081 > handshake.jsonl
+          .ci-venv/bin/python - <<'EOF'
+          import json
+          frames = [json.loads(line) for line in open("handshake.jsonl") if line.strip()]
+          tools = [t["name"] for f in frames for t in f.get("result", {}).get("tools", [])]
+          assert len(tools) == 8 and tools == sorted(tools), tools
+          print("handshake ok:", ", ".join(tools))
+          EOF
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import Any
 
 from ..models.queries import MigrationQuery
@@ -54,6 +55,21 @@ def _keep(query: MigrationQuery, row: dict[str, Any]) -> bool:
     if query.states and row["state"] not in query.states:
         return False
     return not (query.version is not None and row["version"] != query.version)
+
+
+_ATTENTION_RANK = {"FAILED": 0, "MISSING_FAILED": 1, "OUT_OF_ORDER": 2, "PENDING": 3}
+
+
+def _migration_order(row: dict[str, Any]) -> tuple[int, int, int, str]:
+    """Attention state first, then engine order, then stable identity."""
+    order = row["orderExecuted"]
+    known = isinstance(order, int)
+    return (
+        _ATTENTION_RANK.get(row["state"], 4),
+        0 if known else 1,
+        order if known else 0,
+        row["identity"],
+    )
 
 
 def _from_flyway(body: Any) -> tuple[list[dict[str, Any]], list[str]]:
@@ -184,6 +200,21 @@ def _from_liquibase(body: Any) -> tuple[list[dict[str, Any]], list[str]]:
                 state, evidence = _state(raw, _LIQUIBASE)
                 raw_id = change.get("id")
                 change_id = raw_id if isinstance(raw_id, str) else "unidentified"
+                change_log = (
+                    change.get("changeLog")
+                    if isinstance(change.get("changeLog"), str)
+                    else None
+                )
+                author = (
+                    change.get("author")
+                    if isinstance(change.get("author"), str)
+                    else None
+                )
+                if change_log is None or author is None:
+                    gaps.add("MIGRATION_IDENTITY_INCOMPLETE")
+                identity = ":".join(
+                    (change_log or "unknown", change_id, author or "unknown")
+                )
                 checksum, checksum_type = _checksum(change.get("checksum"))
                 algorithm = None
                 if checksum and (matched := _ALGORITHM.match(checksum)):
@@ -197,15 +228,11 @@ def _from_liquibase(body: Any) -> tuple[list[dict[str, Any]], list[str]]:
                         "parentContextId": parent,
                         "engine": "liquibase",
                         "migrationBean": str(bean_name)[:256],
-                        "identity": f"{bean_name}:{change_id}"[:256],
+                        "identity": identity[:256],
                         "script": None,
-                        "changeLog": change.get("changeLog")
-                        if isinstance(change.get("changeLog"), str)
-                        else None,
+                        "changeLog": change_log,
                         "changeSetId": change_id[:256],
-                        "author": change.get("author")
-                        if isinstance(change.get("author"), str)
-                        else None,
+                        "author": author,
                         "version": None,
                         "description": None,
                         "checksum": checksum,
@@ -292,17 +319,29 @@ def normalize_migrations(
 ) -> tuple[list[dict[str, Any]], list[str], str]:
     rows: list[dict[str, Any]] = []
     gaps: list[str] = []
-    if flyway is not None:
-        parsed, parsed_gaps = _from_flyway(flyway)
+    invalid_engines: set[str] = set()
+    for engine, body, parser in (
+        ("flyway", flyway, _from_flyway),
+        ("liquibase", liquibase, _from_liquibase),
+    ):
+        if body is None:
+            continue
+        try:
+            parsed, parsed_gaps = parser(body)
+        except (ValueError, TypeError, KeyError):
+            invalid_engines.add(engine)
+            gaps.append(engine.upper() + "_EVIDENCE_INVALID")
+            continue
         rows.extend(parsed)
         gaps.extend(parsed_gaps)
-    if liquibase is not None:
-        parsed, parsed_gaps = _from_liquibase(liquibase)
-        rows.extend(parsed)
-        gaps.extend(parsed_gaps)
-    rows, expected_gaps, visibility = apply_expected(rows, query)
+    comparison = replace(
+        query,
+        expected=tuple(e for e in query.expected if e.engine not in invalid_engines),
+    )
+    rows, expected_gaps, visibility = apply_expected(rows, comparison)
     gaps.extend(expected_gaps)
     kept = [row for row in rows if _keep(query, row)]
+    kept.sort(key=_migration_order)
     items = []
     for index, row in enumerate(kept, start=1):
         row["id"] = f"migration_{index:06d}"

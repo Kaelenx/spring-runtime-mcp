@@ -32,6 +32,33 @@ _DIFF_FIELDS = (
 )
 
 
+def _profile_evidence(body: Any, services: Services) -> Any:
+    """Profiles permission does not grant unregistered property evidence."""
+    if not isinstance(body, dict) or services.config_policy is None:
+        return None
+    sources = []
+    for source in (
+        body.get("propertySources", [])
+        if isinstance(body.get("propertySources"), list)
+        else []
+    ):
+        if not isinstance(source, dict) or not isinstance(
+            source.get("properties"), dict
+        ):
+            continue
+        sources.append(
+            {
+                "name": source.get("name"),
+                "properties": {
+                    key: value
+                    for key, value in source["properties"].items()
+                    if services.config_policy.allows(key)
+                },
+            }
+        )
+    return {"activeProfiles": body.get("activeProfiles"), "propertySources": sources}
+
+
 def _project(page: dict[str, Any]) -> dict[str, Any]:
     data = page.get("data")
     if not isinstance(data, dict) or "items" not in data:
@@ -151,8 +178,10 @@ async def _optional_startup(
 async def detect_drift(
     arguments: Mapping[str, Any], services: Services
 ) -> dict[str, Any]:
+    request_target = "local"
     try:
         query = validate_arguments(arguments, "springboot_detect_drift")
+        request_target = query.target_id
         assert isinstance(query, DriftQuery)
         # A caller revision is not an observed build id. Do not infer
         # POSSIBLE_WRONG_INSTANCE unless a future authorized info read proves it.
@@ -182,6 +211,11 @@ async def detect_drift(
         failures: list[dict[str, Any]] = []
         for endpoint in plan:
             try:
+                if endpoint == "env" and (
+                    services.config_policy is None
+                    or not services.config_policy.profiles
+                ):
+                    raise EndpointReadError("CAPABILITY_DISABLED", "env")
                 observation = await read_checked(
                     services, query.target_id, endpoint, snapshot
                 )
@@ -214,7 +248,9 @@ async def detect_drift(
             mappings_body=None if "mappings" not in bodies else bodies["mappings"].body,
             flyway_body=None if "flyway" not in bodies else bodies["flyway"].body,
             migration_observed="liquibase" in bodies,
-            env_body=None if "env" not in bodies else bodies["env"].body,
+            env_body=_profile_evidence(bodies["env"].body, services)
+            if "env" in bodies
+            else None,
             catalog=services.catalog,
         )
         missing = list(compared["missing"])
@@ -262,12 +298,13 @@ async def detect_drift(
     except NormalizationError as exc:
         return failed(
             exc.code,
+            request_target,
             endpoint=exc.endpoint_id if isinstance(exc, EndpointReadError) else None,
             http_status=exc.http_status if isinstance(exc, EndpointReadError) else None,
         )
     except TimeoutError:
-        return failed("TARGET_TIMEOUT")
+        return failed("TARGET_TIMEOUT", request_target)
     except (ValueError, TypeError, KeyError, RecursionError, UnicodeError):
-        return failed("MALFORMED_EVIDENCE")
+        return failed("MALFORMED_EVIDENCE", request_target)
     except Exception:
-        return failed("INTERNAL_ERROR")
+        return failed("INTERNAL_ERROR", request_target)

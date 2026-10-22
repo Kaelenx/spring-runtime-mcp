@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -155,12 +156,32 @@ def normalize_startup(
             row["stepId"],
         )
     )
-    durations = [
-        row["durationMs"]
-        for row in records.values()
-        if isinstance(row["durationMs"], (int, float))
-    ]
-    total = max(durations) if durations else None
+    total: int | float | None = None
+    try:
+        starts = [
+            datetime.fromisoformat(event["startTime"].replace("Z", "+00:00"))
+            for event in events
+        ]
+        ends = [
+            datetime.fromisoformat(event["endTime"].replace("Z", "+00:00"))
+            for event in events
+        ]
+        raw_start = body["timeline"].get("startTime")
+        start = (
+            datetime.fromisoformat(raw_start.replace("Z", "+00:00"))
+            if isinstance(raw_start, str)
+            else min(starts)
+        )
+        if not starts or any(date.tzinfo is None for date in [start, *starts, *ends]):
+            raise ValueError("STARTUP_TIMING_UNOBSERVED")
+        if any(
+            end < begin or begin < start
+            for begin, end in zip(starts, ends, strict=True)
+        ):
+            raise ValueError("STARTUP_TIMING_UNOBSERVED")
+        total = (max(ends) - start).total_seconds() * 1000
+    except (ValueError, TypeError, KeyError, AttributeError):
+        gaps.add("STARTUP_TIMING_UNOBSERVED")
     complete = not gaps
     basis = "timelineSpan" if total is not None else "unknown"
     return version, total, basis, complete, items, sorted(gaps)

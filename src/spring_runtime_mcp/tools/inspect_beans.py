@@ -33,9 +33,10 @@ from ..policy.output_guard import (
     REVIEW_TARGET,
 )
 from ..policy.sanitization import MARKER, SanitizerPipeline
+from ..policy.configuration import ConfigReadPolicy
 from ..snapshots import SnapshotStore
 from ..transport.bounded_json import validate_tree
-from ..transport.response_gate import EndpointReadError
+from ..transport.response_gate import HEALTH_ENDPOINTS, EndpointReadError
 from ..transport.responses import serialize_response
 
 SAFE_CODES = frozenset(
@@ -80,8 +81,12 @@ SAFE_CODES = frozenset(
     ]
 )
 _DIAGNOSTIC_CODE = re.compile(r"[A-Z][A-Z0-9_]{0,63}\Z")
-# Fixture substitution is provenance, not missing Spring evidence.
-_PROVENANCE_GAPS = frozenset({"FIXTURE_SUBSTITUTED"})
+"""Fixture substitution is provenance, not missing Spring evidence.
+
+An absent operator fact catalog explains unknown producers without marking the
+runtime Bean evidence itself incomplete.
+"""
+_PROVENANCE_GAPS = frozenset({"FIXTURE_SUBSTITUTED", "SOURCE_CATALOG_UNPROVIDED"})
 
 
 def _analysis_catalog(catalog: SourceCatalog) -> SourceCatalog:
@@ -120,6 +125,7 @@ class Services:
     sanitizer: SanitizerPipeline
     snapshots: SnapshotStore
     targets: frozenset[str] = frozenset({"local"})
+    config_policy: ConfigReadPolicy | None = None
 
 
 def error(
@@ -280,7 +286,10 @@ def _check(
         raise NormalizationError("OBSERVATION_IDENTITY_MISMATCH")
     if observation.error_code is not None:
         raise NormalizationError("ENDPOINT_UNAVAILABLE")
-    if observation.http_status != 200 or observation.body is None:
+    if observation.body is None or not (
+        observation.http_status == 200
+        or (observation.http_status == 503 and endpoint in HEALTH_ENDPOINTS)
+    ):
         raise NormalizationError(
             "ENDPOINT_UNAUTHORIZED"
             if observation.http_status in (401, 403)
@@ -368,12 +377,16 @@ def _page(
             result["truncated"] = True
             result["truncationReasons"] = ["RESPONSE_BUDGET"]
     if remaining:
+        deadline = (
+            services.snapshots.deadline(query.cursor, query) if query.cursor else None
+        )
         continuation = deepcopy(result)
         continuation["data"]["items"] = remaining
         page["nextCursor"] = services.snapshots.put(
             services.sanitizer.sanitize(continuation),
             query,
             sanitizer=services.sanitizer,
+            expires_at=deadline,
         )
         serialize_response(page, "\0" * 128, sanitizer=services.sanitizer)
     return page
@@ -383,8 +396,10 @@ async def inspect_beans(
     arguments: Mapping[str, Any], services: Services
 ) -> dict[str, Any]:
     """Return a sanitized contract envelope; no caller-controlled network access."""
+    request_target = "local"
     try:
         query = validate_arguments(arguments)
+        request_target = query.target_id
         if (
             query.target_id not in services.targets
             or services.catalog.target_id != query.target_id
@@ -667,15 +682,16 @@ async def inspect_beans(
     except NormalizationError as exc:
         return failed(
             exc.code,
+            request_target,
             endpoint=exc.endpoint_id if isinstance(exc, EndpointReadError) else None,
             http_status=exc.http_status if isinstance(exc, EndpointReadError) else None,
         )
     except TimeoutError:
-        return failed("TARGET_TIMEOUT")
+        return failed("TARGET_TIMEOUT", request_target)
     except (ValueError, TypeError, KeyError, RecursionError, UnicodeError):
-        return failed("MALFORMED_EVIDENCE")
+        return failed("MALFORMED_EVIDENCE", request_target)
     except Exception:
-        return failed("INTERNAL_ERROR")
+        return failed("INTERNAL_ERROR", request_target)
 
 
 def _failure(analysis: FailureAnalysis, sanitizer: SanitizerPipeline) -> dict[str, Any]:

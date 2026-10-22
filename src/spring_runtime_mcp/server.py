@@ -14,6 +14,7 @@ from jsonschema.exceptions import ValidationError
 from .contracts.definitions import list_tools
 from .models.source_catalog import SourceCatalog
 from .policy.sanitization import SanitizerPipeline
+from .policy.configuration import ConfigReadPolicy
 from .snapshots import SnapshotStore
 from .tools.inspect_beans import Services, failed
 from .tools.registry import HANDLERS, call_tool
@@ -24,10 +25,20 @@ from .transport.stdio import quiet_console
 
 SERVER_VERSION = "0.1.0"
 MAX_FRAME_BYTES = 64 * 1024
+MAX_REQUEST_ID_BYTES = 128
+# Legacy-era versions this self-implemented host actually serves. 2026-07-28 is
+# a modern-era revision (per-request `_meta`, server/discover) and must not be
+# claimed until the official SDK or an equivalent implementation lands.
+SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18",)
 
 
 def build_services(
-    base_url: str, target_id: str = "local", timeout: float = 5.0
+    base_url: str,
+    target_id: str = "local",
+    timeout: float = 5.0,
+    *,
+    config_policy: ConfigReadPolicy | None = None,
+    source_catalog: SourceCatalog | None = None,
 ) -> Services:
     """Assemble the real reader. No connection is opened until a tool calls it."""
     targets = frozenset({target_id})
@@ -35,15 +46,25 @@ def build_services(
     reader = ResponseGateReader(
         transport,
         targets=targets,
-        enabled_endpoints=ENDPOINTS,
+        enabled_endpoints=ENDPOINTS - {"env", "configprops"}
+        if config_policy is None
+        else ENDPOINTS,
         timeout=timeout,
     )
+    if source_catalog is None:
+        # Missing workspace facts are recorded provenance, not absent code.
+        catalog = SourceCatalog(target_id, None, {}, (), ("SOURCE_CATALOG_UNPROVIDED",))
+    elif source_catalog.target_id != target_id:
+        raise ValueError("SOURCE_TARGET_MISMATCH")
+    else:
+        catalog = source_catalog
     return Services(
         reader,
-        SourceCatalog(target_id, None, {}, (), ()),
+        catalog,
         SanitizerPipeline(),
         SnapshotStore(),
         targets=targets,
+        config_policy=config_policy,
     )
 
 
@@ -95,21 +116,41 @@ def _descriptors() -> list[dict[str, Any]]:
                 "name": item["name"],
                 "description": item["description"],
                 "inputSchema": item["inputSchema"],
+                "outputSchema": item["outputSchema"],
                 "annotations": item["annotations"],
             }
         )
     return listed
 
 
+def _valid_request_id(value: object) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return len(value.encode("utf-8")) <= MAX_REQUEST_ID_BYTES
+    return type(value) is int
+
+
+def _valid_envelope(schema: dict[str, Any], envelope: object) -> bool:
+    if not isinstance(envelope, dict):
+        return False
+    try:
+        Draft202012Validator(schema).validate(envelope)
+    except ValidationError:
+        return False
+    return True
+
+
 async def _call_tool(message_id: object, params: object, services: Services) -> bytes:
     if not isinstance(params, dict):
-        return _tool_frame(message_id, failed("INVALID_ARGUMENT"))
+        return _error(message_id, -32602, "INVALID_PARAMS")
     name = params.get("name")
     arguments = params.get("arguments", {})
+    if not isinstance(name, str):
+        return _tool_frame(message_id, failed("INVALID_ARGUMENT"))
     catalog = {item["name"]: item for item in list_tools()}
-    if not isinstance(name, str) or name not in catalog:
-        code = "CAPABILITY_DISABLED" if name in catalog else "UNKNOWN_TOOL"
-        return _tool_frame(message_id, failed(code))
+    if name not in catalog:
+        return _error(message_id, -32602, "UNKNOWN_TOOL")
     if not isinstance(arguments, dict):
         return _tool_frame(message_id, failed("INVALID_ARGUMENT"))
     try:
@@ -119,6 +160,16 @@ async def _call_tool(message_id: object, params: object, services: Services) -> 
     if name not in HANDLERS:
         return _tool_frame(message_id, failed("CAPABILITY_DISABLED"))
     envelope = await call_tool(name, arguments, services)
+    if not _valid_envelope(catalog[name]["outputSchema"], envelope):
+        source = envelope.get("source") if isinstance(envelope, dict) else None
+        target = source.get("targetId") if isinstance(source, dict) else None
+        return _tool_frame(
+            message_id,
+            failed(
+                "OUTPUT_CONTRACT_VIOLATION",
+                target if isinstance(target, str) else "local",
+            ),
+        )
     return _tool_frame(message_id, envelope)
 
 
@@ -127,6 +178,10 @@ async def dispatch(message: object, services: Services) -> bytes | None:
     if not isinstance(message, dict) or not isinstance(message.get("method"), str):
         if isinstance(message, dict) and "id" in message:
             return _error(message.get("id"), -32600, "INVALID_REQUEST")
+        return _error(None, -32600, "INVALID_REQUEST")
+    if message.get("jsonrpc") != "2.0":
+        return _error(message.get("id"), -32600, "INVALID_REQUEST")
+    if "id" in message and not _valid_request_id(message["id"]):
         return _error(None, -32600, "INVALID_REQUEST")
     method = message["method"]
     has_id = "id" in message
@@ -138,8 +193,8 @@ async def dispatch(message: object, services: Services) -> bytes | None:
         requested = params.get("protocolVersion") if isinstance(params, dict) else None
         version = (
             requested
-            if isinstance(requested, str) and len(requested) <= 64
-            else "2026-07-28"
+            if isinstance(requested, str) and requested in SUPPORTED_PROTOCOL_VERSIONS
+            else SUPPORTED_PROTOCOL_VERSIONS[0]
         )
         return _encode(
             {
@@ -167,14 +222,20 @@ async def dispatch(message: object, services: Services) -> bytes | None:
 
 
 async def run_stdio(services: Services) -> None:
-    """Read newline-delimited JSON-RPC from stdin and write one frame per request."""
+    """Read newline-delimited JSON-RPC from stdin and write one frame per request.
+
+    Every read is capped one byte over the frame limit so an oversized frame is
+    detected while reading, never after buffering it. The newline counts toward
+    the limit; an oversized frame is answered once and ends the session, so its
+    remaining bytes cannot be re-read as later requests.
+    """
     while True:
-        line = await asyncio.to_thread(sys.stdin.buffer.readline)
+        line = await asyncio.to_thread(sys.stdin.buffer.readline, MAX_FRAME_BYTES + 1)
         if not line:
             return
         if len(line) > MAX_FRAME_BYTES:
             os.write(1, _error(None, -32600, "INVALID_REQUEST"))
-            continue
+            return
         with quiet_console():
             try:
                 message = json.loads(line)

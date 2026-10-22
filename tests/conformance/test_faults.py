@@ -8,6 +8,7 @@ import pytest
 
 from spring_runtime_mcp.models.source_catalog import SourceCatalog
 from spring_runtime_mcp.policy.sanitization import SanitizerPipeline
+from spring_runtime_mcp.policy.configuration import ConfigReadPolicy
 from spring_runtime_mcp.snapshots import SnapshotStore
 from spring_runtime_mcp.tools.inspect_beans import Services
 from spring_runtime_mcp.transport import response_gate
@@ -91,6 +92,8 @@ def test_every_tool_error_envelope_conforms(
         SourceCatalog("local", None, {}, (), ()),
         SanitizerPipeline(),
         SnapshotStore(),
+        # Fault injection begins after explicit config authorization.
+        config_policy=ConfigReadPolicy(prefixes=frozenset({"spring"})),
     )
     result = asyncio.run(call_tool(tool, arguments, services))
     assert_contract(tool, result)

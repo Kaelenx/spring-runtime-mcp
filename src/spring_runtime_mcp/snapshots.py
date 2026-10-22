@@ -70,8 +70,14 @@ class SnapshotStore:
         query: InspectBeansQuery,
         *,
         sanitizer: SanitizerPipeline | None = None,
+        expires_at: float | None = None,
     ) -> str:
         self._prune()
+        deadline = self._clock() + self._ttl
+        if expires_at is not None:
+            deadline = min(deadline, expires_at)
+        if deadline <= self._clock():
+            raise NormalizationError("CURSOR_EXPIRED")
         ensure_safe_output(envelope, sanitizer=sanitizer)
         try:
             data = json.dumps(
@@ -90,11 +96,19 @@ class SnapshotStore:
         token = secrets.token_urlsafe(32)
         while token in self._entries:
             token = secrets.token_urlsafe(32)
-        self._entries[token] = _Entry(
-            data, self._digest(query), self._clock() + self._ttl
-        )
+        self._entries[token] = _Entry(data, self._digest(query), deadline)
         self._size += len(data)
         return token
+
+    def deadline(self, token: str, query: InspectBeansQuery) -> float:
+        """Continuations inherit the original observation's absolute expiry."""
+        self._prune()
+        entry = self._entries.get(token)
+        if entry is None:
+            raise NormalizationError("CURSOR_EXPIRED")
+        if not secrets.compare_digest(entry.query_digest, self._digest(query)):
+            raise NormalizationError("CURSOR_QUERY_MISMATCH")
+        return entry.expires_at
 
     def get(
         self,

@@ -63,6 +63,10 @@ async def read_checked(
 ) -> Any:
     if target not in services.targets or services.catalog.target_id != target:
         raise NormalizationError("TARGET_NOT_REGISTERED")
+    if endpoint in {"env", "configprops"} and services.config_policy is None:
+        from ..transport.response_gate import EndpointReadError
+
+        raise EndpointReadError("CAPABILITY_DISABLED", endpoint)
     observation = await asyncio.wait_for(
         services.reader.read(target, endpoint, snapshot_id=snapshot),
         timeout=15,
@@ -104,12 +108,16 @@ def finalize(result: dict[str, Any], services: Services, query: Any) -> dict[str
                 return failed("RESPONSE_TOO_LARGE", query.target_id)
             count //= 2
     if items[count:]:
+        deadline = (
+            services.snapshots.deadline(query.cursor, query) if query.cursor else None
+        )
         continuation = deepcopy(result)
         continuation["data"]["items"] = items[count:]
         page["nextCursor"] = services.snapshots.put(
             services.sanitizer.sanitize(continuation),
             query,
             sanitizer=services.sanitizer,
+            expires_at=deadline,
         )
         serialize_response(page, "\0" * 128, sanitizer=services.sanitizer)
     return page

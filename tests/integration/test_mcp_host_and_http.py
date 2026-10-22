@@ -16,8 +16,14 @@ from typing import Any
 
 import pytest
 
-from spring_runtime_mcp.server import build_services
+from spring_runtime_mcp.server import (
+    SUPPORTED_PROTOCOL_VERSIONS,
+    build_services,
+    dispatch,
+)
+from spring_runtime_mcp.tools.inspect_beans import Services
 from spring_runtime_mcp.tools.inspect_beans import inspect_beans
+from spring_runtime_mcp.policy.configuration import ConfigReadPolicy
 from spring_runtime_mcp.transport.actuator_http import ActuatorHttpTransport
 from spring_runtime_mcp.transport.response_gate import (
     EndpointReadError,
@@ -75,6 +81,10 @@ class _Mount:
     def __init__(self) -> None:
         self.mode = "beans"
         self.paths: list[str] = []
+        self.requests: list[tuple[str, str]] = []
+        self.responses: dict[str, tuple[int, bytes]] = {}
+        self.writes = 0
+        self.startup_buffer = [1, 2, 3]
         self.lock = threading.Lock()
 
 
@@ -89,7 +99,9 @@ def _handler_for(state: _Mount) -> type[BaseHTTPRequestHandler]:
             path = self.path.split("?", 1)[0]
             with state.lock:
                 state.paths.append(path)
+                state.requests.append((self.command, self.path))
                 mode = state.mode
+                response = state.responses.get(path)
             if path == "/stolen":
                 body = b"followed"
                 self._send(200, "text/plain", body)
@@ -108,10 +120,27 @@ def _handler_for(state: _Mount) -> type[BaseHTTPRequestHandler]:
                 body = b"x" * 8000
                 self._send(200, "application/json", body)
                 return
+            if response is not None:
+                status, body = response
+                self._send(status, "application/json", body)
+                return
             if path == "/actuator/beans":
                 self._send(200, "application/json", BEANS)
                 return
             self._send(404, "application/json", b"{}")
+
+        def do_POST(self) -> None:
+            # Model a write-capable Actuator: POST startup consumes its buffer.
+            with state.lock:
+                state.requests.append((self.command, self.path))
+                state.writes += 1
+                if self.path == "/actuator/startup":
+                    state.startup_buffer.clear()
+            self._send(200, "application/json", b"{}")
+
+        do_PUT = do_POST
+        do_PATCH = do_POST
+        do_DELETE = do_POST
 
         def _send(self, status: int, content_type: str, body: bytes) -> None:
             self.send_response(status)
@@ -146,6 +175,135 @@ def _base(server: ThreadingHTTPServer) -> str:
     return f"http://{host}:{port}"
 
 
+def _call_server(
+    services: Services, tool: str, arguments: dict[str, Any]
+) -> dict[str, Any]:
+    frame = asyncio.run(
+        dispatch(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": tool, "arguments": arguments},
+            },
+            services,
+        )
+    )
+    assert frame is not None
+    return json.loads(frame)["result"]
+
+
+@pytest.mark.parametrize(
+    "tool,arguments,endpoints",
+    [
+        ("springboot_analyze_startup", {}, ["startup"]),
+        ("springboot_check_migrations", {}, ["flyway", "liquibase"]),
+        (
+            "springboot_detect_drift",
+            {"expectedBeans": [{"name": "orderService"}]},
+            ["beans"],
+        ),
+        ("springboot_diagnose_health", {}, ["health"]),
+        (
+            "springboot_inspect_beans",
+            {"beanNamePattern": "absentBean"},
+            ["beans", "conditions"],
+        ),
+        (
+            "springboot_inspect_config",
+            {"prefix": "spring.application"},
+            ["env", "configprops"],
+        ),
+        (
+            "springboot_search_openapi",
+            {"pathPattern": "/orders", "httpMethod": "POST"},
+            ["openapi"],
+        ),
+        (
+            "springboot_verify_mappings",
+            {"pathPattern": "/orders", "httpMethod": "DELETE"},
+            ["mappings"],
+        ),
+    ],
+)
+def test_server_tools_are_readonly_on_wire_and_reject_request_overrides(
+    mounted: Any, tool: str, arguments: dict[str, Any], endpoints: list[str]
+) -> None:
+    server, state = mounted
+    fixtures = ROOT / "tests/fixtures/conformance/boot-3.4-servlet"
+    for endpoint in endpoints:
+        filename = "health-v3" if endpoint == "health" else endpoint
+        state.responses[f"/actuator/{endpoint}"] = (
+            200,
+            (fixtures / f"{filename}.json").read_bytes(),
+        )
+    # Keep the on-wire assertions; grant only this synthetic config scenario.
+    services = build_services(
+        _base(server),
+        config_policy=ConfigReadPolicy(prefixes=frozenset({"spring.application"}))
+        if tool == "springboot_inspect_config"
+        else None,
+    )
+    result = _call_server(services, tool, arguments)
+    assert result["isError"] is False
+    assert result["structuredContent"]["status"] in {"ok", "partial"}
+    expected = [("GET", f"/actuator/{endpoint}") for endpoint in endpoints]
+    assert state.requests == expected
+    assert state.writes == 0
+    assert state.startup_buffer == [1, 2, 3]
+
+    for override in (
+        {"method": "POST"},
+        {"url": _base(server) + "/actuator/shutdown"},
+        {"path": "/actuator/heapdump"},
+        {"endpointId": "logfile"},
+        {"headers": {"X-HTTP-Method-Override": "DELETE"}},
+    ):
+        rejected = _call_server(services, tool, {**arguments, **override})
+        assert rejected["isError"] is True
+        assert rejected["structuredContent"]["errors"][0]["code"] == "INVALID_ARGUMENT"
+        assert state.requests == expected
+    rejected = _call_server(services, tool, {**arguments, "targetId": "unregistered"})
+    assert rejected["isError"] is True
+    assert rejected["structuredContent"]["errors"][0]["code"] == "TARGET_NOT_REGISTERED"
+    assert state.requests == expected
+    assert state.writes == 0
+    assert state.startup_buffer == [1, 2, 3]
+
+
+@pytest.mark.parametrize(
+    "status,code", [(404, "STARTUP_DATA_UNAVAILABLE"), (405, "ENDPOINT_UNAVAILABLE")]
+)
+def test_server_startup_get_failure_never_falls_back_to_post(
+    mounted: Any, status: int, code: str
+) -> None:
+    server, state = mounted
+    state.responses["/actuator/startup"] = (status, b"{}")
+    result = _call_server(
+        build_services(_base(server)), "springboot_analyze_startup", {}
+    )
+    assert result["isError"] is True
+    assert result["structuredContent"]["errors"][0]["code"] == code
+    assert state.requests == [("GET", "/actuator/startup")]
+    assert state.writes == 0
+    assert state.startup_buffer == [1, 2, 3]
+
+
+def test_server_tool_does_not_follow_redirect_to_an_unregistered_path(
+    mounted: Any,
+) -> None:
+    server, state = mounted
+    state.mode = "redirect"
+    result = _call_server(
+        build_services(_base(server)), "springboot_analyze_startup", {}
+    )
+    assert result["isError"] is True
+    assert result["structuredContent"]["errors"][0]["code"] == "REDIRECT_BLOCKED"
+    assert state.requests == [("GET", "/actuator/startup")]
+    assert state.writes == 0
+    assert state.startup_buffer == [1, 2, 3]
+
+
 def test_real_http_transport_with_loopback_actuator(mounted: Any) -> None:
     server, _state = mounted
     services = build_services(_base(server), "local", 5.0)
@@ -157,6 +315,73 @@ def test_real_http_transport_with_loopback_actuator(mounted: Any) -> None:
     )
     assert result["status"] in ("ok", "partial")
     assert any(item["name"] == "orderService" for item in result["data"]["items"])
+
+
+def test_tc_bug_03_localhost_uses_only_approved_numeric_addresses(mounted: Any) -> None:
+    """TC-BUG-03: dual-stack localhost still reaches the registered IPv4 fixture."""
+    server, state = mounted
+    services = build_services(f"http://localhost:{server.server_port}")
+    result = asyncio.run(inspect_beans({"beanNamePattern": "orderService"}, services))
+    assert result["status"] in {"ok", "partial"}
+    assert any(row["name"] == "orderService" for row in result["data"]["items"])
+    assert state.requests == [("GET", "/actuator/beans")]
+
+
+@pytest.mark.parametrize("cancel", [False, True], ids=["deadline", "cancellation"])
+def test_tc_bug_09_real_slow_stream_is_closed(cancel: bool) -> None:
+    """TC-BUG-09: real loopback streaming stops after deadline or cancellation."""
+    reading = threading.Event()
+    peer_closed = threading.Event()
+    stop = threading.Event()
+
+    class SlowHandler(BaseHTTPRequestHandler):
+        def log_message(self, *args: Any) -> None:
+            return None
+
+        def do_GET(self) -> None:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", "1048576")
+            self.end_headers()
+            reading.set()
+            try:
+                while not stop.wait(0.01):
+                    self.wfile.write(b" ")
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                peer_closed.set()
+
+    fixture = ThreadingHTTPServer(("127.0.0.1", 0), SlowHandler)
+    thread = threading.Thread(target=fixture.serve_forever, daemon=True)
+    thread.start()
+
+    async def exercise() -> None:
+        reader = ResponseGateReader(
+            ActuatorHttpTransport(_base(fixture), targets=frozenset({"local"})),
+            frozenset({"local"}),
+            frozenset({"health"}),
+            timeout=0.2,
+        )
+        task = asyncio.create_task(reader.read("local", "health", snapshot_id="slow"))
+        assert await asyncio.to_thread(reading.wait, 1), "fixture was never reached"
+        if cancel:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        else:
+            with pytest.raises(EndpointReadError, match="TARGET_TIMEOUT"):
+                await task
+        assert await asyncio.to_thread(peer_closed.wait, 1), (
+            "HTTP socket remained open after cancellation"
+        )
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        stop.set()
+        fixture.shutdown()
+        fixture.server_close()
+        thread.join(timeout=2)
 
 
 def test_real_http_transport_blocks_redirect_and_oversize(mounted: Any) -> None:
@@ -262,7 +487,11 @@ def test_mcp_stdio_lifecycle_drift_and_unknown_tool(mounted: Any) -> None:
             },
         )
         assert initialized["id"] == 1
-        assert initialized["result"]["protocolVersion"] == "2026-07-28"
+        # RW-02: the self-implemented host is legacy-era and must negotiate a
+        # version it serves instead of echoing a modern revision it cannot obey.
+        assert (
+            initialized["result"]["protocolVersion"] == SUPPORTED_PROTOCOL_VERSIONS[0]
+        )
         assert initialized["result"]["serverInfo"]["name"] == "spring-runtime-mcp"
         assert process.stdin is not None
         process.stdin.write(b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
@@ -321,11 +550,7 @@ def test_mcp_stdio_lifecycle_drift_and_unknown_tool(mounted: Any) -> None:
                 },
             },
         )
-        assert unknown["result"]["isError"] is True
-        rejected = unknown["result"]["structuredContent"]
-        assert rejected["status"] == "unavailable"
-        assert rejected["data"] is None
-        assert rejected["errors"][0]["code"] == "UNKNOWN_TOOL"
+        assert unknown["error"]["code"] == -32602
     finally:
         if process.stdin:
             process.stdin.close()

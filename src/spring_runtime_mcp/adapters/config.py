@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
+from copy import deepcopy
 from typing import Any
 
 from ..contracts.definitions import glob_matches
 from ..models.queries import ConfigQuery
 from ..policy.sanitization import MARKER, SanitizerPipeline, sensitive_key
+from ..policy.configuration import ConfigReadPolicy
 
 _FILE = re.compile(r"class path resource \[([A-Za-z0-9_$./-]+)\](?: - (\d+):(\d+))?")
 _MASK = re.compile(r"^\*+$")
@@ -45,6 +48,43 @@ def _origin(raw: Any, source_name: str) -> dict[str, Any]:
     }
 
 
+_NESTED_DEPTH = 4
+_NESTED_LEAVES = 500
+
+
+def _nested_leaves(
+    prefix: str,
+    node: dict[str, Any],
+    *,
+    gaps: set[str],
+    budget: list[int],
+    depth: int = 0,
+) -> Iterator[tuple[str, Any]]:
+    """Expand nested config objects to dotted leaves under fixed budgets."""
+    for leaf in sorted(node):
+        if not isinstance(leaf, str):
+            gaps.add("CONFIGPROPS_NESTED_UNSUPPORTED")
+            continue
+        key = f"{prefix}.{leaf}" if prefix else leaf
+        value = node[leaf]
+        if isinstance(value, dict):
+            if depth >= _NESTED_DEPTH:
+                gaps.add("CONFIGPROPS_NESTED_LIMIT")
+                continue
+            yield from _nested_leaves(
+                key, value, gaps=gaps, budget=budget, depth=depth + 1
+            )
+            continue
+        if isinstance(value, list):
+            gaps.add("CONFIGPROPS_NESTED_UNSUPPORTED")
+            continue
+        if budget[0] >= _NESTED_LEAVES:
+            gaps.add("CONFIGPROPS_NESTED_LIMIT")
+            continue
+        budget[0] += 1
+        yield key, value
+
+
 def _selected(query: ConfigQuery, key: str) -> bool:
     if query.prefix and key != query.prefix and not key.startswith(query.prefix + "."):
         return False
@@ -78,6 +118,8 @@ def normalize_config(
     configprops: Any | None,
     query: ConfigQuery,
     pipeline: SanitizerPipeline,
+    *,
+    policy: ConfigReadPolicy | None = None,
 ) -> tuple[list[str] | None, list[dict[str, Any]], list[str]]:
     gaps: set[str] = set()
     profiles: list[str] | None = None
@@ -110,13 +152,20 @@ def normalize_config(
                 for key in sorted(properties):
                     if not isinstance(key, str) or not _selected(query, key):
                         continue
+                    if policy is not None and not policy.allows(key):
+                        gaps.add("CONFIG_SCOPE_LIMITED")
+                        continue
                     if query.context_id is not None:
                         continue
                     spec = properties[key]
                     raw_value = spec.get("value") if isinstance(spec, dict) else spec
                     origin = spec.get("origin") if isinstance(spec, dict) else None
                     value, state = _project(
-                        raw_value, query.include_values, key, pipeline
+                        raw_value,
+                        query.include_values
+                        and (policy is None or policy.allow_values),
+                        key,
+                        pipeline,
                     )
                     rows.append(
                         {
@@ -169,13 +218,21 @@ def normalize_config(
                     if not isinstance(properties, dict):
                         gaps.add("CONFIGPROPS_PROPERTIES_UNOBSERVED")
                         continue
-                    for leaf in sorted(properties):
-                        key = f"{prefix}.{leaf}" if prefix else str(leaf)
+                    budget = [0]
+                    for key, raw_value in _nested_leaves(
+                        prefix or "", properties, gaps=gaps, budget=budget
+                    ):
                         if not _selected(query, key):
                             continue
-                        raw_value = properties[leaf]
+                        if policy is not None and not policy.allows(key):
+                            gaps.add("CONFIG_SCOPE_LIMITED")
+                            continue
                         value, state = _project(
-                            raw_value, query.include_values, key, pipeline
+                            raw_value,
+                            query.include_values
+                            and (policy is None or policy.allow_values),
+                            key,
+                            pipeline,
                         )
                         target = next(
                             (
@@ -213,17 +270,21 @@ def normalize_config(
                                 }
                             )
                         else:
+                            if target["configurationBean"] is not None:
+                                target = deepcopy(target)
+                                rows.append(target)
                             target["configurationBean"] = str(bean_name)[:256]
                             target["prefix"] = prefix or target["prefix"]
                             target["bindingValue"] = value
                             target["bindingState"] = state
-                            target["contextId"] = target["contextId"] or (
+                            target["contextId"] = (
                                 context_name if isinstance(context_name, str) else None
                             )
+                            target["parentContextId"] = parent
     elif configprops is not None:
         gaps.add("CONFIGPROPS_UNOBSERVED")
     items = []
     for index, row in enumerate(rows, start=1):
         row["id"] = f"config_{index:06d}"
         items.append(row)
-    return profiles, items, sorted(gaps)
+    return profiles if policy is None or policy.profiles else None, items, sorted(gaps)

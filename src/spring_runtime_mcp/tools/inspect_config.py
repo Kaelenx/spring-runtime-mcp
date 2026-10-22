@@ -18,9 +18,15 @@ from .support import finalize, read_checked, resume, shell, stamp
 async def inspect_config(
     arguments: Mapping[str, Any], services: Services
 ) -> dict[str, Any]:
+    request_target = "local"
     try:
         query = validate_arguments(arguments, "springboot_inspect_config")
+        request_target = query.target_id
         assert isinstance(query, ConfigQuery)
+        if services.config_policy is None or not (
+            services.config_policy.properties or services.config_policy.prefixes
+        ):
+            raise NormalizationError("CAPABILITY_DISABLED")
         if query.cursor:
             return resume(services, query)
         if (
@@ -59,26 +65,36 @@ async def inspect_config(
                 http_status=first["httpStatus"],
             )
         profiles, items, gaps = normalize_config(
-            bodies.get("env"), bodies.get("configprops"), query, services.sanitizer
+            bodies.get("env"),
+            bodies.get("configprops"),
+            query,
+            services.sanitizer,
+            policy=services.config_policy,
         )
         for item in items:
             item["observationId"] = observation_ids.get(
                 item["endpointId"], "observation_config"
             )
         result["data"] = {"activeProfiles": profiles, "items": items}
-        result["totalMatched"] = len(items)
+        result["totalMatched"] = None if "CONFIG_SCOPE_LIMITED" in gaps else len(items)
         result["errors"] = failures
+        if "CONFIGPROPS_NESTED_LIMIT" in gaps:
+            result["truncated"] = True
+            result["truncationReasons"] = sorted(
+                set(result["truncationReasons"] + ["CONFIGPROPS_NESTED_LIMIT"])
+            )[:8]
         partial(result, [safe_code(item["code"]) for item in failures] + gaps)
         return finalize(result, services, query)
     except NormalizationError as exc:
         return failed(
             exc.code,
+            request_target,
             endpoint=exc.endpoint_id if isinstance(exc, EndpointReadError) else None,
             http_status=exc.http_status if isinstance(exc, EndpointReadError) else None,
         )
     except TimeoutError:
-        return failed("TARGET_TIMEOUT")
+        return failed("TARGET_TIMEOUT", request_target)
     except (ValueError, TypeError, KeyError, RecursionError, UnicodeError):
-        return failed("MALFORMED_EVIDENCE")
+        return failed("MALFORMED_EVIDENCE", request_target)
     except Exception:
-        return failed("INTERNAL_ERROR")
+        return failed("INTERNAL_ERROR", request_target)

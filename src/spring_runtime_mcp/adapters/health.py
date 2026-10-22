@@ -12,11 +12,7 @@ _CLASS = re.compile(r"[A-Za-z_][A-Za-z0-9_.$]{0,255}\Z")
 def _children(node: dict[str, Any]) -> dict[str, Any]:
     components = node.get("components")
     if isinstance(components, dict):
-        return {
-            str(key): value
-            for key, value in components.items()
-            if isinstance(value, dict)
-        }
+        return components
     details = node.get("details")
     if isinstance(details, dict):
         return {
@@ -50,7 +46,10 @@ def _error_type(node: dict[str, Any]) -> str | None:
     raw = details.get("error") if isinstance(details, dict) else None
     if not isinstance(raw, str) or not raw:
         return None
-    token = raw.split(":", 1)[0].strip().split()[-1]
+    tokens = raw.split(":", 1)[0].strip().split()
+    if not tokens:
+        return None
+    token = tokens[-1]
     if _CLASS.fullmatch(token):
         return token
     return None
@@ -88,10 +87,14 @@ def normalize_health(
             gaps.add("HEALTH_COMPONENT_UNREADABLE")
             return
         children = _children(node)
+        if "components" in node and not isinstance(node["components"], dict):
+            gaps.add("HEALTH_COMPONENT_UNREADABLE")
         raw_status = node.get("status")
-        status = raw_status if isinstance(raw_status, str) else "UNKNOWN"
+        status = raw_status if isinstance(raw_status, str) and raw_status else "UNKNOWN"
+        if not isinstance(raw_status, str) or not raw_status:
+            gaps.add("HEALTH_STATUS_UNOBSERVED")
         scalars = _scalars(node)
-        hidden = status in _ABNORMAL and not children and not scalars
+        hidden = status != "UP" and not children and not scalars
         if hidden:
             gaps.add("HEALTH_DETAILS_NOT_VISIBLE")
         if depth > max_depth:
@@ -101,7 +104,7 @@ def normalize_health(
             not component_path or path[: len(component_path)] == component_path
         ) and (depth > 0 or not children)
         visible = not component_path or path[: len(component_path)] == component_path
-        if selected and visible and (include_healthy or status in _ABNORMAL or hidden):
+        if selected and visible and (include_healthy or status != "UP" or hidden):
             found.append(
                 {
                     "path": path,

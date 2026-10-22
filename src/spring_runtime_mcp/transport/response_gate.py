@@ -34,6 +34,7 @@ ENDPOINTS = frozenset(
         "configprops",
     }
 )
+HEALTH_ENDPOINTS = frozenset({"health", "health-liveness", "health-readiness"})
 
 
 class EndpointReadError(NormalizationError):
@@ -114,6 +115,8 @@ class ResponseGateReader:
             )
         except TimeoutError:
             raise EndpointReadError("TARGET_TIMEOUT", endpoint_id) from None
+        except NormalizationError as exc:
+            raise EndpointReadError(exc.code, endpoint_id) from None
         except OSError as exc:
             code = (
                 "TARGET_CONNECTION_REFUSED"
@@ -149,7 +152,7 @@ class ResponseGateReader:
                 else "ENDPOINT_NOT_EXPOSED"
             )
             raise EndpointReadError(code, endpoint_id, status)
-        if status != 200:
+        if status != 200 and not (status == 503 and endpoint_id in HEALTH_ENDPOINTS):
             raise EndpointReadError("ENDPOINT_UNAVAILABLE", endpoint_id, status)
         media = response.content_type.partition(";")[0].strip().lower()
         if media != "application/json" and media not in {
@@ -168,5 +171,6 @@ class ResponseGateReader:
             datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             endpoint_id,
             body,
+            http_status=status,
             representation="actuatorV2" if ".v2+" in media else "actuatorV3",
         )

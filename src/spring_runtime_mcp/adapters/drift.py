@@ -36,6 +36,7 @@ _BRACE = re.compile(r"\{([A-Za-z0-9_$]+)\}")
 _DIM = {"beans": 0, "routes": 1, "migrations": 2}
 _FLYWAY_GAPS = frozenset(
     {
+        "FLYWAY_EVIDENCE_INVALID",
         "FLYWAY_BEANS_UNOBSERVED",
         "FLYWAY_MIGRATIONS_UNOBSERVED",
         "MIGRATION_RECORD_UNREADABLE",

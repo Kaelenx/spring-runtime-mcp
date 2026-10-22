@@ -110,22 +110,27 @@ def test_readonly_static_inventory_has_one_request_constructor_and_no_execution_
         "subprocess",
     }
 
-    def blocked(module: str | None, filename: str) -> bool:
-        # The one production connector may import http.client. Every other
-        # network stack, including urllib.request and raw sockets, stays banned.
-        if module == "http.client" and filename == "actuator_http.py":
+    def blocked(module: str | None, relative: str) -> bool:
+        # The one production connector resolves a numeric address and verifies
+        # the real peer before any HTTP write, so it alone may import socket
+        # and http.client. Every other network stack stays banned.
+        if relative == "transport/actuator_http.py" and module in {
+            "http.client",
+            "socket",
+        }:
             return False
         return module in forbidden
 
     for path in root.rglob("*.py"):
+        relative = path.relative_to(root).as_posix()
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                assert not any(
-                    blocked(alias.name, path.name) for alias in node.names
-                ), path
+                assert not any(blocked(alias.name, relative) for alias in node.names), (
+                    path
+                )
             if isinstance(node, ast.ImportFrom):
-                assert not blocked(node.module, path.name), path
+                assert not blocked(node.module, relative), path
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
                     assert node.func.id not in {"print", "eval", "exec", "compile"}, (
@@ -147,6 +152,10 @@ def test_readonly_static_inventory_has_one_request_constructor_and_no_execution_
                         "delete",
                         "system",
                         "popen",
+                        "send",
+                        "sendall",
+                        "sendto",
+                        "sendmsg",
                     }, path
                     if node.func.attr == "request":
                         request_calls.append((path.name, node))

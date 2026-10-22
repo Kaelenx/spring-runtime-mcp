@@ -468,9 +468,27 @@ class SanitizerPipeline:
                             "bindingValue",
                         )
                     ):
-                        result[key] = MARKER
+                        if "propertyKey" in item and key == "origin":
+                            result[key] = {
+                                "kind": "unknown",
+                                "file": None,
+                                "line": None,
+                                "column": None,
+                                "environmentVariable": None,
+                            }
+                        elif "propertyKey" in item and child is None:
+                            result[key] = None
+                        else:
+                            result[key] = MARKER
                     else:
                         result[key] = walk(child, depth + 1, embedded, key)
+                if "propertyKey" in item and descriptor_tainted:
+                    for value_key, state_key in (
+                        ("effectiveValue", "valueState"),
+                        ("bindingValue", "bindingState"),
+                    ):
+                        if result.get(value_key) == MARKER:
+                            result[state_key] = "redacted"
                 return result
             if isinstance(item, list):
                 return [walk(child, depth + 1, embedded, field) for child in item]

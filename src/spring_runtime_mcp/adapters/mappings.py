@@ -2,9 +2,82 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ..contracts.definitions import glob_matches
+
+_PREDICATE_CONDITION = re.compile(
+    r"(?P<kind>consumes|produces|headers|params)\s*\[(?P<value>.*)\]\Z"
+)
+_PREDICATE_KIND = {
+    "consumes": "consumes",
+    "produces": "produces",
+    "headers": "header",
+    "params": "param",
+}
+_MAX_PREDICATE_LENGTH = 4096
+_MAX_PREDICATE_PIECES = 32
+_MAX_PREDICATE_PATHS = 16
+_MAX_PREDICATE_CONDITIONS = 16
+
+
+def _parse_predicate(
+    raw: Any,
+) -> tuple[list[str], list[str], list[dict[str, Any]], bool]:
+    """Parse one bounded WebFlux predicate string without executing it."""
+    if not isinstance(raw, str) or not raw or len(raw) > _MAX_PREDICATE_LENGTH:
+        return [], [], [], False
+    text = raw.strip()
+    if len(text) >= 2 and text[0] in "{(" and text[-1] in ")}":
+        text = text[1:-1]
+    pieces = [piece.strip() for piece in re.split(r",|&&", text)]
+    pieces = [piece for piece in pieces if piece]
+    if not pieces or len(pieces) > _MAX_PREDICATE_PIECES:
+        return [], [], [], False
+    paths: list[str] = []
+    methods: list[str] = []
+    conditions: list[dict[str, Any]] = []
+    for piece in pieces:
+        token, separator, rest = piece.partition(" ")
+        if token.upper() in _METHODS:
+            if methods:
+                return [], [], [], False
+            methods.append(token.upper())
+            if not separator:
+                continue
+            rest = rest.strip()
+            if rest.startswith("[") and rest.endswith("]"):
+                rest = rest[1:-1].strip()
+            if not (rest.startswith("/") and len(rest) <= 1024):
+                return [], [], [], False
+            if len(paths) >= _MAX_PREDICATE_PATHS:
+                return [], [], [], False
+            paths.append(rest)
+            continue
+        if piece.startswith("/") and 1 < len(piece) <= 1024:
+            if len(paths) >= _MAX_PREDICATE_PATHS:
+                return [], [], [], False
+            paths.append(piece)
+            continue
+        matched = _PREDICATE_CONDITION.fullmatch(piece)
+        if matched is None or len(conditions) >= _MAX_PREDICATE_CONDITIONS:
+            return [], [], [], False
+        value = matched.group("value").strip()
+        if len(value) > 256:
+            return [], [], [], False
+        conditions.append(
+            {
+                "kind": _PREDICATE_KIND[matched.group("kind")],
+                "name": None,
+                "value": value or None,
+                "negated": False,
+            }
+        )
+    if not (paths or methods or conditions):
+        return [], [], [], False
+    return paths, methods, conditions, True
+
 
 _METHODS = {
     "GET",
@@ -115,6 +188,14 @@ def normalize_mappings(
                         if isinstance(details, dict)
                         else None
                     )
+                    handler_function = (
+                        details.get("handlerFunction")
+                        if isinstance(details, dict)
+                        else None
+                    )
+                    if not isinstance(handler_function, str):
+                        nested = record.get("handlerFunction")
+                        handler_function = nested if isinstance(nested, str) else None
                     class_name = (
                         method.get("className") if isinstance(method, dict) else None
                     )
@@ -135,6 +216,7 @@ def normalize_mappings(
                     methods: list[str] = []
                     condition_rows: list[dict[str, Any]] = []
                     complete = isinstance(conditions_raw, dict)
+                    predicate_parsed = False
                     if isinstance(conditions_raw, dict):
                         raw_patterns = conditions_raw.get("patterns", [])
                         raw_methods = conditions_raw.get("methods", [])
@@ -159,6 +241,21 @@ def normalize_mappings(
                             complete = False
                         condition_rows, condition_complete = _conditions(conditions_raw)
                         complete = complete and condition_complete
+                    elif isinstance(record.get("predicate"), str):
+                        (
+                            patterns,
+                            methods,
+                            condition_rows,
+                            predicate_parsed,
+                        ) = _parse_predicate(record["predicate"])
+                        if predicate_parsed:
+                            complete = True
+                        else:
+                            patterns = []
+                            methods = []
+                            condition_rows = []
+                            complete = False
+                            gaps.add("MAPPING_PREDICATE_UNPARSED")
                     else:
                         gaps.add("MAPPING_CONDITIONS_UNOBSERVED")
                     if path_pattern and not any(
@@ -197,6 +294,8 @@ def normalize_mappings(
                             else None,
                             "handlerKind": "method"
                             if isinstance(method, dict)
+                            else "function"
+                            if predicate_parsed or handler_function
                             else "unknown",
                             "conditions": condition_rows,
                             "matchingComplete": complete,

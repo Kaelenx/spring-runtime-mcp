@@ -12,6 +12,7 @@ from .adapters.source_catalog import load_source_catalog
 from .models.common import AnalysisBudget, NormalizationError, ParsedObservation
 from .models.source_catalog import SourceCatalog
 from .policy.sanitization import SanitizerPipeline
+from .policy.configuration import ConfigReadPolicy
 from .snapshots import SnapshotStore
 from .tools.inspect_beans import Services, failed
 from .transport.bounded_json import loads_bounded
@@ -74,6 +75,9 @@ def _profile_services(scenario: str) -> Services:
         SourceCatalog("local", None, {}, (), ()),
         SanitizerPipeline(),
         SnapshotStore(),
+        config_policy=ConfigReadPolicy(
+            prefixes=frozenset({"spring", "app"}), allow_values=True, profiles=True
+        ),
     )
 
 

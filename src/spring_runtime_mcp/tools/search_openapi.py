@@ -18,8 +18,10 @@ from .support import finalize, read_checked, resume, shell, stamp
 async def search_openapi(
     arguments: Mapping[str, Any], services: Services
 ) -> dict[str, Any]:
+    request_target = "local"
     try:
         query = validate_arguments(arguments, "springboot_search_openapi")
+        request_target = query.target_id
         assert isinstance(query, OpenApiQuery)
         if query.cursor:
             return resume(services, query)
@@ -40,16 +42,14 @@ async def search_openapi(
         }
         result["totalMatched"] = len(items)
         partial(result, gaps)
-        if "REF_DEPTH_LIMIT" in gaps or "REF_CYCLE" in gaps:
+        limit_codes = ("REF_DEPTH_LIMIT", "REF_CYCLE", "REF_EXPANSION_LIMIT")
+        if any(code in gaps for code in limit_codes):
+            reason = next(code for code in limit_codes if code in gaps)
             result["truncated"] = True
-            result["truncationReasons"] = [
-                code for code in ("REF_DEPTH_LIMIT", "REF_CYCLE") if code in gaps
-            ]
+            result["truncationReasons"] = [code for code in limit_codes if code in gaps]
             result["nextAction"] = {
                 "kind": "refine",
-                "reasonCode": "REF_DEPTH_LIMIT"
-                if "REF_DEPTH_LIMIT" in gaps
-                else "REF_CYCLE",
+                "reasonCode": reason,
                 "filterSuggestions": (
                     [{"parameter": "schemaName", "value": blocked}] if blocked else []
                 ),
@@ -58,12 +58,13 @@ async def search_openapi(
     except NormalizationError as exc:
         return failed(
             exc.code,
+            request_target,
             endpoint=exc.endpoint_id if isinstance(exc, EndpointReadError) else None,
             http_status=exc.http_status if isinstance(exc, EndpointReadError) else None,
         )
     except TimeoutError:
-        return failed("TARGET_TIMEOUT")
+        return failed("TARGET_TIMEOUT", request_target)
     except (ValueError, TypeError, KeyError, RecursionError, UnicodeError):
-        return failed("MALFORMED_EVIDENCE")
+        return failed("MALFORMED_EVIDENCE", request_target)
     except Exception:
-        return failed("INTERNAL_ERROR")
+        return failed("INTERNAL_ERROR", request_target)

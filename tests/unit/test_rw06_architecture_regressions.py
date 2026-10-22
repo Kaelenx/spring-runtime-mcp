@@ -404,3 +404,35 @@ def test_rw06_nested_config_props_keep_registered_leaves() -> None:
     assert (
         "nested-marker-9271" not in rendered and "deep-marker-9271" not in rendered
     ), "RW-06: includeValues=false must not leak nested raw values"
+
+
+def test_root_context_without_parent_id_is_complete() -> None:
+    """RW-06: Boot omits parentId for root contexts; that is not unobserved."""
+    from spring_runtime_mcp.adapters.beans import normalize_beans
+
+    body = {
+        "contexts": {
+            "demo": {
+                "beans": {
+                    "orderController": {
+                        "aliases": [],
+                        "scope": "singleton",
+                        "type": "example.OrderController",
+                        "resource": "file:/demo/OrderController.class",
+                        "dependencies": [],
+                    }
+                }
+            }
+        }
+    }
+    observation = ParsedObservation(
+        "local", "snapshot", "obs", "2026-10-22T00:00:00Z", "beans", body
+    )
+    graph = normalize_beans(observation, budget=AnalysisBudget())
+    context = next(iter(graph.contexts.values()))
+    assert context.parent.state == "known" and context.parent.value is None, (
+        "a context without parentId is a root context, not unknown parentage"
+    )
+    assert (
+        graph.coverage == "complete" and "PARENT_CONTEXT_UNOBSERVED" not in graph.gaps
+    )

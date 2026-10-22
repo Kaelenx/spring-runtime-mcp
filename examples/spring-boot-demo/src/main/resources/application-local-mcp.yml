@@ -1,0 +1,24 @@
+management:
+  server:
+    port: 18081
+    address: 127.0.0.1
+  endpoints:
+    access:
+      max-permitted: read-only
+    web:
+      base-path: /actuator
+      exposure:
+        include: health,beans,conditions,mappings,flyway,info,startup
+        exclude: shutdown,heapdump,logfile,sessions,loggers,caches,quartz
+    jmx:
+      exposure:
+        exclude: "*"
+  endpoint:
+    env:
+      access: none
+      show-values: never
+    configprops:
+      access: none
+      show-values: never
+    health:
+      show-details: never

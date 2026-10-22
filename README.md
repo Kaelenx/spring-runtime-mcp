@@ -143,6 +143,20 @@ tool_timeout_sec = 30
 
 Acceptance order on first connect: `initialize` succeeds → `tools/list` returns eight alphabetically sorted tools → one read-only call returns a schema-valid, sanitized result. A `401`/`403` from the target means its own security chain rejected the request; fix authorization there, never by disabling security or following `/login`.
 
+## Verified against a real Boot 3.4 app
+
+`examples/spring-boot-demo` is a disposable Spring Boot 3.4.5 / Java 21 app with a deliberately missing conditional bean, a real Flyway migration, an MVC route and a buffered startup snapshot. Against a live process, `springboot_inspect_beans` returns:
+
+```text
+REQUIRED_BEAN_MISSING      (StripeConfiguration#paymentGateway)
+  → SOURCE_FACTORY_NOT_CREATED
+    → PROPERTY_NOT_FOUND   (StripeConfiguration#stripeClient, stripe.enabled)
+```
+
+That chain comes from `/actuator/beans`, `/actuator/conditions` and the operator-supplied `source-catalog.json` — no code changes in the target, no writes. The same transcript covers real route verification (`GET /orders/{id}` with its handler descriptor), health, Flyway version `1`, startup steps, and drift reporting `paymentGateway` as missing with `evidenceLevel: observed`.
+
+Results are `partial` where the app reports condition grammars this server does not model yet, or when Boot's `dependencies` arrays reference infrastructure objects that are not beans; those facts become gaps rather than silent claims. See the [demo README](examples/spring-boot-demo/README.md) for the full transcript and the reproduction script.
+
 ## Prompt cookbook
 
 These prompts map onto the eight tools. `local` is the `--target-id` registered at startup.

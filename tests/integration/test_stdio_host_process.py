@@ -248,7 +248,9 @@ def test_stdio_host_process_handles_a_frame_exactly_at_the_cap() -> None:
     at_limit = base + b" " * (FRAME_CAP - len(base) - 1) + b"\n"
     assert len(at_limit) == FRAME_CAP
 
-    completed = host(at_limit)
+    # Read the reply before closing stdin: a response still in flight when
+    # the stream ends may be cancelled by the SDK's shutdown path.
+    completed = host_in_stages(at_limit, b"")
 
     assert completed.returncode == 0 and completed.stderr == b""
     lines = completed.stdout.splitlines()
@@ -404,10 +406,10 @@ def test_stdio_host_process_accepts_a_matching_fact_catalog(tmp_path: Path) -> N
 
 def test_stdio_host_process_does_not_open_unregistered_endpoints() -> None:
     """The host rejects unknown-tool calls without any socket activity."""
-    completed = host(_call(1, "springboot_missing_tool"))
+    completed = host_in_stages(_handshake(), _call(1, "springboot_missing_tool"))
 
     assert completed.returncode == 0 and completed.stderr == b""
     lines = completed.stdout.splitlines()
-    assert len(lines) == 1
-    body = json.loads(lines[0])
+    assert len(lines) == 2, completed.stdout
+    body = json.loads(lines[1])
     assert "result" not in body and body["error"]["code"] == -32602

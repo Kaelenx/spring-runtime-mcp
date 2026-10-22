@@ -211,6 +211,18 @@ Claude Code 在工作区根目录使用 `.mcp.json`，配置如下；用 `claude
 
 所有场景均先精确过滤；结果 `truncated=true` 时按 `nextAction` 收窄或用同参数游标翻页，不请求全量原始 dump。
 
+## 真实应用验证
+
+`examples/spring-boot-demo` 是一个 Spring Boot 3.4.5 / Java 21 的可丢弃目标应用，包含条件缺失的 `PaymentGateway`、真实 Flyway 迁移、MVC 路由和启动快照。对运行中的进程，`springboot_inspect_beans` 能还原：
+
+```text
+REQUIRED_BEAN_MISSING      (StripeConfiguration#paymentGateway)
+  → SOURCE_FACTORY_NOT_CREATED
+    → PROPERTY_NOT_FOUND   (StripeConfiguration#stripeClient, stripe.enabled)
+```
+
+复现方式与完整 `transcript.jsonl` 见 [演示说明](examples/spring-boot-demo/README.md)。应用上报的条件语法尚未建模、或 `dependencies` 指向非 Bean 基础设施对象时，结果是 `partial` 并附 gaps，不会伪装成完整证据。
+
 ## 开发与验证
 
 ```bash

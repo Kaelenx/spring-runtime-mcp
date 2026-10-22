@@ -195,7 +195,10 @@ def test_bfs_cycles_budgets_and_depth_are_bounded():
     assert malformed.coverage == "partial"
 
 
-def test_omitted_parent_is_unknown_not_a_proven_root():
+def test_omitted_parent_is_a_root_context_like_boot_reports_it():
+    # Boot emits parentId only for child contexts; verified against a real
+    # Boot 3.4.5 /actuator/beans payload. Treating the omission as unknown
+    # made every single-context application permanently partial.
     observation = ParsedObservation(
         "local",
         "snapshot",
@@ -216,11 +219,13 @@ def test_omitted_parent_is_unknown_not_a_proven_root():
         budget=AnalysisBudget(),
     )
     context = ContextKey("local", "snapshot", "application")
-    assert graph.contexts[context].parent.state == "unknown"
-    assert "PARENT_CONTEXT_UNOBSERVED" in graph.gaps
+    assert graph.contexts[context].parent.state == "known"
+    assert graph.contexts[context].parent.value is None
+    assert "PARENT_CONTEXT_UNOBSERVED" not in graph.gaps
+    # The unresolved dependency is still reported, now with the real reason.
     assert (
         graph.forward[key(graph, "application", "bean")][0].resolution.reason_code
-        == "PARENT_CONTEXT_UNOBSERVED"
+        == "NOT_FOUND_IN_COMPLETE_VISIBLE_HIERARCHY"
     )
 
 

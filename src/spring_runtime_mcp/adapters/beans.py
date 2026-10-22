@@ -56,10 +56,9 @@ def normalize_beans(
                 continue
             parent_id = raw_context.get("parentId")
             if "parentId" not in raw_context:
-                parent: Fact[ContextKey | None] = Fact(
-                    "unknown", None, "PARENT_CONTEXT_NOT_REPORTED"
-                )
-                gaps.add("PARENT_CONTEXT_UNOBSERVED")
+                # Boot reports parentId only for child contexts; omitting it
+                # means this is a root context, not unobserved hierarchy.
+                parent: Fact[ContextKey | None] = Fact("known", None, None)
             elif parent_id is None:
                 parent = Fact("known", None, None)
             elif _text(parent_id):

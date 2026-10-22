@@ -1,5 +1,11 @@
 # 版本记录
 
+## Unreleased
+
+- 关闭 2026-10-18 逻辑与边界审计的 TC-BUG-01 至 15；连接器增加数字地址固定与 peer 校验，安全静态清单仅对 `transport/actuator_http.py` 放行 `socket`/`http.client` 导入并新增禁止原始套接字写入。全量 729 passed。
+- 工具契约 JSON 移至 `src/spring_runtime_mcp/schemas/`，通过 `importlib.resources` 加载，随 wheel 分发。
+- 增加 hatchling 构建后端、Apache-2.0 许可证、英文 README、`SECURITY.md` 与 GitHub Actions CI（Python 3.11–3.14 测试、mypy/ruff、wheel 构建及干净环境 stdio 握手）。`uv build` 产物已在隔离虚拟环境安装并完成 `initialize`/`tools/list`。
+
 ## v0.1.0 — 2026-10-17
 
 首次源码封板，版本号与 `pyproject.toml`、MCP `serverInfo.version` 一致。本记录描述本地 Git 提交范围，不代表包发布、部署或生产验收。

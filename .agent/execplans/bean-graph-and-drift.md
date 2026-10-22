@@ -93,7 +93,7 @@ Review 结论：Bean 图和嵌套条件算法有执行级测试，但 OpenAPI、
 ## Context and Orientation
 
 
-工作目录是 /home/neil/Projects/codcli/spring-runtime-mcp。已有 AGENTS.md 是工作边界，SPEC.md 版本 0.4 是产品规格，src/schemas/tools-contract.json 版本 2 是公开输入/输出契约，scripts/validate_tool_contract.py 是独立校验器。执行者可以按需查看这些文件，但本计划已内嵌本任务需要的路径、算法和默认值。本文不要求创建 .agent/PLANS.md，也不改变根目录 AGENTS.md。
+工作目录是 <repo-root>。已有 AGENTS.md 是工作边界，SPEC.md 版本 0.4 是产品规格，src/schemas/tools-contract.json 版本 2 是公开输入/输出契约，scripts/validate_tool_contract.py 是独立校验器。执行者可以按需查看这些文件，但本计划已内嵌本任务需要的路径、算法和默认值。本文不要求创建 .agent/PLANS.md，也不改变根目录 AGENTS.md。
 
 ApplicationContext 是 Spring 管理 Bean 的容器。contextId 只在某个 targetId 中有意义；parentId 指向父容器。Bean 的 canonicalName 是 beans 字典键，aliases 是它的其他查找名称。依赖边 A → B 表示 A 的 dependencies 报告了 B；反向边是同一关系的逆向索引，不代表父容器可以访问子容器。逻辑快照是一次诊断内收集的多份观察，不保证跨端点事务一致；每份观察有自己的 observationId 和时间。
 
@@ -277,9 +277,9 @@ Milestone 4 验收要求命令行看到完整 Stripe 阻塞链、父子容器反
 ## Concrete Steps
 
 
-所有命令的工作目录均为 /home/neil/Projects/codcli/spring-runtime-mcp；其他机器先 cd 到含现有 SPEC.md 的同一仓库根。当前只有第一条独立校验已具备实现，后续命令是里程碑完成后必须提供的入口。代码、测试和目录在实现对应里程碑时创建，本计划编写阶段不提前运行缺失模块。
+所有命令的工作目录均为 <repo-root>；其他机器先 cd 到含现有 SPEC.md 的同一仓库根。当前只有第一条独立校验已具备实现，后续命令是里程碑完成后必须提供的入口。代码、测试和目录在实现对应里程碑时创建，本计划编写阶段不提前运行缺失模块。
 
-    cd /home/neil/Projects/codcli/spring-runtime-mcp
+    cd <repo-root>
     uv run --no-project --with jsonschema==4.25.1 python scripts/validate_tool_contract.py
 
 该校验当前应退出 0 并打印八个 Schema 验证成功。依赖首次缓存可以访问包索引，测试本身不访问目标；缓存齐备后所有下列 uv 命令都可以加 --offline。Python 版本至少 3.11。无需 npm、Maven、JDK、数据库、真实凭据或模型 API。

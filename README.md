@@ -250,3 +250,5 @@ Security findings should go to the repository's private vulnerability reporting 
 ## License
 
 [Apache-2.0](LICENSE)
+
+<!-- mcp-name: io.github.Kaelenx/spring-runtime-mcp -->

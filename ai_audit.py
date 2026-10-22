@@ -41,6 +41,7 @@ class ASTAnalyzer(ast.NodeVisitor):
         self.is_test = is_test
         self.findings: list[tuple[str, int, str]] = []
         self.in_async_func = False
+        self.in_protocol = False
         self.defined_funcs: dict[str, int] = {}
         self.used_names: set[str] = set()
 
@@ -115,6 +116,13 @@ class ASTAnalyzer(ast.NodeVisitor):
         self.generic_visit(node)
 
     # 3. 检查伪异步与空壳函数
+    def visit_ClassDef(self, node: ast.ClassDef):
+        previous = self.in_protocol
+        bases = [self._get_call_name(base) for base in node.bases]
+        self.in_protocol = any(base.rsplit(".", 1)[-1] == "Protocol" for base in bases)
+        self.generic_visit(node)
+        self.in_protocol = previous
+
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
         prev_async = self.in_async_func
         self.in_async_func = True
@@ -147,9 +155,16 @@ class ASTAnalyzer(ast.NodeVisitor):
                     and isinstance(stmt.value, ast.Constant)
                     and stmt.value.value is Ellipsis
                 ):
-                    # 排除包含 @abstractmethod 的装饰器
+                    # Protocol 方法和 @overload 声明没有运行时函数体，不是占位实现。
                     decorators = [self._get_call_name(d) for d in node.decorator_list]
-                    if not any("abstract" in d for d in decorators):
+                    is_overload = any(
+                        d.rsplit(".", 1)[-1] == "overload" for d in decorators
+                    )
+                    if (
+                        not self.in_protocol
+                        and not is_overload
+                        and not any("abstract" in d for d in decorators)
+                    ):
                         self.add_finding(
                             "HOLLOW_IMPL",
                             node.lineno,
@@ -184,6 +199,10 @@ class ASTAnalyzer(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call):
         call_name = self._get_call_name(node.func)
+        if isinstance(node.func, ast.Attribute):
+            # self._helper() / obj._helper() is a real reference even when the
+            # helper is never referenced as a bare Name node elsewhere.
+            self.used_names.add(node.func.attr)
         if self.in_async_func and not self.is_test:
             if call_name in BLOCKING_CALLS:
                 self.add_finding(
@@ -191,6 +210,13 @@ class ASTAnalyzer(ast.NodeVisitor):
                     node.lineno,
                     f"async 函数内调用了同步阻塞方法: '{call_name}()'",
                 )
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute):
+        if isinstance(node.ctx, ast.Load):
+            # Method references passed as callables (asyncio.to_thread(self._x))
+            # are real uses too, not dead code.
+            self.used_names.add(node.attr)
         self.generic_visit(node)
 
     def visit_Name(self, node: ast.Name):
@@ -219,9 +245,17 @@ class ASTAnalyzer(ast.NodeVisitor):
                         comp, (ast.List, ast.Tuple, ast.Set)
                     ):
                         elts_str = [ast.unparse(e).lower() for e in comp.elts]
+                        # "partial" is a valid evidence state in this project, not a
+                        # failure. Only success+failure mixes are suspicious.
+                        failure_markers = (
+                            "err",
+                            "fail",
+                            "denied",
+                            "invalid",
+                            "unavailable",
+                        )
                         if any("ok" in s or "success" in s for s in elts_str) and any(
-                            "err" in s or "fail" in s or "partial" in s
-                            for s in elts_str
+                            marker in s for s in elts_str for marker in failure_markers
                         ):
                             self.add_finding(
                                 "WEAK_TEST",

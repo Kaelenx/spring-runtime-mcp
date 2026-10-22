@@ -117,7 +117,7 @@ def test_stdio_fixture_symlink_cannot_read_outside_fixture_root(tmp_path):
     (root / "parent-child" / "beans.json").symlink_to(outside)
     bootstrap = f"""from pathlib import Path
 from spring_runtime_mcp import replay
-replay.FIXTURES = Path({str(root)!r})
+replay.REPLAY_ROOT = Path({str(root)!r})
 replay.main()
 """
     result = cli(
@@ -201,15 +201,15 @@ replay.main()
 
 def test_stdio_fixture_reader_rejects_symlink_roots_and_enforces_read_budget(tmp_path):
     from spring_runtime_mcp.models.common import NormalizationError
-    from spring_runtime_mcp.transport.fixture_files import read_fixture
+    from spring_runtime_mcp.transport.replay_files import read_replay_file
 
     root = tmp_path / "data"
     root.mkdir()
     path = root / "payload.json"
     path.write_bytes(b"x" * 128)
     with pytest.raises(NormalizationError, match="RESPONSE_TOO_LARGE"):
-        read_fixture(root, path, max_bytes=64)
+        read_replay_file(root, path, max_bytes=64)
     alias = tmp_path / "alias"
     alias.symlink_to(root, target_is_directory=True)
     with pytest.raises(NormalizationError, match="FIXTURE_PATH_DENIED"):
-        read_fixture(alias, alias / "payload.json")
+        read_replay_file(alias, alias / "payload.json")

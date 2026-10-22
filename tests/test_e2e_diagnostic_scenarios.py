@@ -39,7 +39,8 @@ def test_scenario_1_existing_bean_and_two_hop_condition_failure() -> None:
     present = bean_call(
         {"beanNamePattern": "orderService", "contextId": "application", "maxDepth": 3}
     )
-    assert present["status"] in ("ok", "partial")
+    assert present["status"] == "ok"
+    assert present["totalMatched"] == 1
     service = present["data"]["items"][0]
     assert service["name"] == "orderService"
     assert service["type"] == "example.OrderService"

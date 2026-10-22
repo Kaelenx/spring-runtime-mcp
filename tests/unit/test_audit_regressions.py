@@ -20,7 +20,7 @@ import pytest
 from spring_runtime_mcp.models.common import NormalizationError, ParsedObservation
 from spring_runtime_mcp.models.source_catalog import SourceCatalog
 from spring_runtime_mcp.policy.sanitization import MARKER, SanitizerPipeline
-from spring_runtime_mcp.replay import FIXTURES, services_for
+from spring_runtime_mcp.replay import REPLAY_ROOT, services_for
 from spring_runtime_mcp.snapshots import SnapshotStore
 from spring_runtime_mcp.tools.inspect_beans import Services, inspect_beans
 from spring_runtime_mcp.transport.response_gate import ResponseGateReader
@@ -93,9 +93,9 @@ def test_tc_bug_02_missing_beans_fixture_must_not_silently_borrow(
     scenario: str,
 ) -> None:
     """A scenario without beans.json must not quietly reuse parent-child beans."""
-    assert not (FIXTURES / scenario / "beans.json").exists()
+    assert not (REPLAY_ROOT / scenario / "beans.json").exists()
     parent = json.loads(
-        (FIXTURES / "parent-child" / "beans.json").read_text(encoding="utf-8")
+        (REPLAY_ROOT / "parent-child" / "beans.json").read_text(encoding="utf-8")
     )
     try:
         services = services_for(scenario)

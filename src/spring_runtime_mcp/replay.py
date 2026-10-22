@@ -1,4 +1,4 @@
-"""Fixed offline fixture replay using the actual Bean tool handler."""
+"""Fixed offline replay using the actual tool handlers."""
 
 from __future__ import annotations
 
@@ -17,12 +17,12 @@ from .snapshots import SnapshotStore
 from .services import Services
 from .diagnostics import failed
 from .transport.bounded_json import loads_bounded
-from .transport.fixture_files import read_fixture
+from .transport.replay_files import read_replay_file
 from .transport.responses import serialize_response
 from .transport.stdio import quiet_console, seal_console
 
-FIXTURES = Path(__file__).resolve().parent / "replay_fixtures/bean_graph"
-CONFORMANCE = FIXTURES.parent / "conformance"
+REPLAY_ROOT = Path(__file__).resolve().parent / "replay_data/bean_graph"
+CONFORMANCE_ROOT = REPLAY_ROOT.parent / "conformance"
 PROFILES = ("boot-2.7-servlet", "boot-3.4-servlet", "boot-4.1-webflux")
 _PROFILE_FILES = {
     "beans": "beans.json",
@@ -62,15 +62,15 @@ class FixtureReader:
 
 
 def _profile_services(scenario: str) -> Services:
-    root = CONFORMANCE / scenario
+    root = CONFORMANCE_ROOT / scenario
     bodies: dict[str, dict[str, Any]] = {}
     for endpoint, name in _PROFILE_FILES.items():
         path = root / name
         if path.exists():
-            bodies[endpoint] = loads_bounded(read_fixture(CONFORMANCE, path))
+            bodies[endpoint] = loads_bounded(read_replay_file(CONFORMANCE_ROOT, path))
     health = root / "health-v3.json"
     if health.exists():
-        bodies["health"] = loads_bounded(read_fixture(CONFORMANCE, health))
+        bodies["health"] = loads_bounded(read_replay_file(CONFORMANCE_ROOT, health))
     return Services(
         FixtureReader(bodies),
         SourceCatalog("local", None, {}, (), ()),
@@ -92,19 +92,21 @@ def services_for(scenario: str) -> Services:
         "nested-conditions",
     ):
         raise NormalizationError("INVALID_ARGUMENT")
-    beans_path = FIXTURES / scenario / "beans.json"
+    beans_path = REPLAY_ROOT / scenario / "beans.json"
     substituted = False
     if not beans_path.exists():
-        beans_path = FIXTURES / "parent-child/beans.json"
+        beans_path = REPLAY_ROOT / "parent-child/beans.json"
         substituted = True
-    bodies = {"beans": loads_bounded(read_fixture(FIXTURES, beans_path))}
-    conditions_path = FIXTURES / scenario / "conditions.json"
+    bodies = {"beans": loads_bounded(read_replay_file(REPLAY_ROOT, beans_path))}
+    conditions_path = REPLAY_ROOT / scenario / "conditions.json"
     if conditions_path.exists():
-        bodies["conditions"] = loads_bounded(read_fixture(FIXTURES, conditions_path))
-    source_path = FIXTURES / scenario / "source-catalog.json"
+        bodies["conditions"] = loads_bounded(
+            read_replay_file(REPLAY_ROOT, conditions_path)
+        )
+    source_path = REPLAY_ROOT / scenario / "source-catalog.json"
     catalog = (
         load_source_catalog(
-            loads_bounded(read_fixture(FIXTURES, source_path)),
+            loads_bounded(read_replay_file(REPLAY_ROOT, source_path)),
             target_id="local",
             budget=AnalysisBudget(),
         )

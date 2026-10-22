@@ -8,7 +8,7 @@ import sys
 import time
 from dataclasses import replace
 from datetime import datetime
-from typing import Any, TextIO
+from typing import Any, TextIO, cast
 
 import mcp.types as types
 from jsonschema import Draft202012Validator, FormatChecker
@@ -305,7 +305,9 @@ async def run_stdio(services: Services, stdout: TextIO | None = None) -> None:
     """
     reader = _BoundedLineReader(sys.stdin.buffer)
     server = build_server(services)
-    async with stdio_server(stdin=reader) as (read_stream, write_stream):  # type: ignore[arg-type]
+    # The SDK accepts a text-receive stream; the bounded reader implements the
+    # async iteration and read_line contract used by stdio_server.
+    async with stdio_server(stdin=cast(Any, reader)) as (read_stream, write_stream):
         await server.run(
             read_stream,
             _BoundedWriteStream(write_stream),

@@ -14,7 +14,7 @@
 | P1 | health details 与 startup tags 截断后没有 `truncated`/gap | 添加 `HEALTH_DETAILS_LIMIT`、`STARTUP_TAG_LIMIT`，设置 `truncated=true`、`totalMatched=None` | 同上 |
 | P1 | 迁移分析预算耗尽被 `except ValueError` 误判为 `*_EVIDENCE_INVALID` | 单独捕获 `AnalysisLimit` 并标记 `GRAPH_LIMIT_REACHED` | 同上 |
 | P1 | 配置诊断与 drift profile 在公共 CLI 没有启用入口 | 新增 `--config-prefix`、`--config-property`、`--config-profiles`、`--config-allow-values`；无选择器时启动失败 | `tests/integration/test_cli_config_wiring.py` |
-| P1 | `replay.py` 引用 `tests/fixtures`，安装 wheel 后无法运行 | fixtures 移入包内 `replay_fixtures/`，安装后 replay 可运行；`src` 不再引用 `tests/` | `test_packaged_replay_fixtures_are_not_read_from_tests` |
+| P1 | `replay.py` 引用 `tests/fixtures`，安装 wheel 后无法运行 | fixtures 移入包内 `replay_data/`，安装后 replay 可运行；`src` 不再引用 `tests/` | `test_packaged_replay_data_is_not_read_from_tests` |
 | P2 | `coverage.scope` 被误脱敏、README 的 16KiB 表述过宽、SPEC 使用不存在的 `--url`/脚本路径、文档含本机路径 | 放行本地 scope；限定 tool result 帧；修正命令与路径；清理本机路径 | 静态检查与文档链接检查 |
 
 公开 inputSchema/outputSchema、八工具排序、只读 GET、回环目标、16KiB tool result 预算和脱敏边界未变。
@@ -27,18 +27,19 @@
 | 类型 | mypy strict，51 source files 通过 |
 | Lint / 格式 | `ruff check`、`ruff format --check` 通过，92 files |
 | 契约 | `scripts/validate_tool_contract.py` 通过，8 工具、144+ 断言 |
-| 构建 | `uv build` 成功；wheel 含 schema、`py.typed`、`replay_fixtures` |
+| 构建 | `uv build` 成功；wheel 含 schema、`py.typed`、`replay_data` |
 | 隔离安装 | 干净 venv 安装 wheel；8 工具 `tools/list`、schema parity、工具错误信封通过 |
 | 官方 SDK | legacy 与 `2026-07-28` 模式均通过 discovery 和工具错误检查 |
 | replay | 安装后运行成功，输出 `REQUIRED_BEAN_MISSING → SOURCE_FACTORY_NOT_CREATED → PROPERTY_NOT_FOUND` |
 | 配置 CLI | 默认 `CAPABILITY_DISABLED`；带 `--config-prefix` 进入真实读取路径（无目标时为 `TARGET_CONNECTION_REFUSED`） |
 | 红队 | Node 入口 5/5 通过，0 skip |
+| 启发式审计 | `python3 ai_audit.py`：0 命中，exit 0（Protocol/overload 与 `self._*` 引用已精确排除） |
 | 安全/一致性 | 仅 `actuator_http.py` 导入 socket/http.client；`git diff --check`、`uv lock --check` 通过 |
 
 ## 残余风险与说明
 
 - 审计早期在并发修改前观察到一次 `test_rw06_startup_node_limit...` 超时形态失败；修复后连续多次全量通过，未能复现。保留为稳定性观察项。
-- `replay_fixtures/` 是 `tests/fixtures/` 的打包副本，后续修改 fixture 时需要同步。
+- `replay_data/` 是 `tests/fixtures/` 的打包副本，后续修改 fixture 时需要同步。
 - 本轮没有重新运行真实 Boot/Java/PostgreSQL Shop 验收，也没有执行真实 TLS/SNI 或第三方桌面客户端矩阵；这些沿用仓库已有验收记录，不等同于新的真实环境证明。
 - 配置诊断仍默认关闭；只有显式登记的 prefix/property 才可读取，值输出还需要 `--config-allow-values`。
-- `ai_audit.py` 是启发式扫描工具，会报告 Protocol 方法、`self._*` 调用和验证函数等误报；它不能替代本记录中的定向复现和测试。
+- `ai_audit.py` 是启发式扫描工具；本轮已修正 Protocol/overload、属性方法引用和 `partial` 状态断言的识别，但启发式扫描仍不能替代本记录中的定向复现和运行时测试。

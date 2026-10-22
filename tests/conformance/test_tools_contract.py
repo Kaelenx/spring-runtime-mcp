@@ -82,9 +82,9 @@ VALID_ARGUMENTS = {
 def test_input_schema_valid_arguments(name):
     from jsonschema import Draft202012Validator
 
-    Draft202012Validator(definition(name)["inputSchema"]).validate(
-        VALID_ARGUMENTS[name]
-    )
+    validator = Draft202012Validator(definition(name)["inputSchema"])
+    validator.validate(VALID_ARGUMENTS[name])
+    assert validator.is_valid(VALID_ARGUMENTS[name])
 
 
 @pytest.mark.parametrize("name", NAMES)

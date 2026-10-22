@@ -1,4 +1,4 @@
-"""Bounded, no-symlink fixture reads; not an arbitrary file ingestion tool."""
+"""Bounded, no-symlink replay file reads; not an arbitrary ingestion tool."""
 
 from __future__ import annotations
 
@@ -9,7 +9,9 @@ from pathlib import Path
 from ..models.common import NormalizationError
 
 
-def read_fixture(root: Path, path: Path, *, max_bytes: int = 8 * 1024 * 1024) -> bytes:
+def read_replay_file(
+    root: Path, path: Path, *, max_bytes: int = 8 * 1024 * 1024
+) -> bytes:
     descriptors: list[int] = []
     try:
         relative = path.relative_to(root)

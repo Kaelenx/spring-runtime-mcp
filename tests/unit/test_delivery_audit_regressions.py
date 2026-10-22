@@ -291,10 +291,10 @@ def test_migration_budget_exhaustion_is_not_malformed_upstream_data() -> None:
     assert "FLYWAY_EVIDENCE_INVALID" not in gaps
 
 
-def test_packaged_replay_fixtures_are_not_read_from_tests() -> None:
-    from spring_runtime_mcp.replay import FIXTURES, services_for
+def test_packaged_replay_data_is_not_read_from_tests() -> None:
+    from spring_runtime_mcp.replay import REPLAY_ROOT, services_for
 
-    assert FIXTURES.is_dir()
-    assert "tests" not in FIXTURES.parts
+    assert REPLAY_ROOT.is_dir()
+    assert "tests" not in REPLAY_ROOT.parts
     replay_services = services_for("parent-child")
     assert replay_services.reader is not None

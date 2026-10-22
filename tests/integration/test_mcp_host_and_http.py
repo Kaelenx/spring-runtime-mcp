@@ -16,11 +16,11 @@ from typing import Any
 
 import pytest
 
-from spring_runtime_mcp.server import (
-    SUPPORTED_PROTOCOL_VERSIONS,
-    build_services,
-    dispatch,
-)
+from mcp_types.version import LATEST_HANDSHAKE_VERSION
+
+from spring_runtime_mcp.server import build_services
+
+from harness.host import dispatch
 from spring_runtime_mcp.tools.inspect_beans import Services
 from spring_runtime_mcp.tools.inspect_beans import inspect_beans
 from spring_runtime_mcp.policy.configuration import ConfigReadPolicy
@@ -487,11 +487,9 @@ def test_mcp_stdio_lifecycle_drift_and_unknown_tool(mounted: Any) -> None:
             },
         )
         assert initialized["id"] == 1
-        # RW-02: the self-implemented host is legacy-era and must negotiate a
-        # version it serves instead of echoing a modern revision it cannot obey.
-        assert (
-            initialized["result"]["protocolVersion"] == SUPPORTED_PROTOCOL_VERSIONS[0]
-        )
+        # RW-02: a handshake-era request must negotiate a version the SDK
+        # actually serves instead of echoing a modern revision it cannot obey.
+        assert initialized["result"]["protocolVersion"] == LATEST_HANDSHAKE_VERSION
         assert initialized["result"]["serverInfo"]["name"] == "spring-runtime-mcp"
         assert process.stdin is not None
         process.stdin.write(b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n')

@@ -4,7 +4,7 @@
 
 **规范版本：0.7。** 本文是产品范围、工具契约、默认值、验收要求和编码 Agent 权限的唯一事实来源。发生冲突时，以本文的具体规格为准；[ADR 0001](docs/adr/0001-positioning-and-non-goals.md)保留架构决策依据，[安全架构规格书](docs/architecture/security-and-sanitization.md)细化网络守卫、只读策略与脱敏机制，[跨版本归一化设计](docs/architecture/cross-version-normalization.md)定义源诊断域、关系解析及自愈配方，[工具契约](src/spring_runtime_mcp/schemas/tools-contract.json)及其[调用策略](docs/contracts/tool-calling-policy.md)固定八个公开工具；[项目计划](Spring-Boot-Safe-Runtime-MCP-Project-Plan.md)作为历史背景。变更公开契约必须同步本文、Schema、fixture 和相关架构文档。
 
-当前 v0.1.0 已实现八个工具处理器、Python 分析内核、有界脱敏出口、固定 fixture 离线重放、自实现 STDIO MCP 宿主与标准库只读 HTTP 连接器。`pyproject.toml` 登记版本、运行依赖和 CLI 脚本，尚未配置显式构建后端或锁文件，也未接入官方 MCP Python SDK。离线及回环 fixture 测试不等同于生产连通、完整协议合规或真实 Boot 版本兼容；DNS 全组校验、数字 IP 固定建连及实际 peer IP 比对仍未实现。下述完整产品要求仍是验收目标，v0.1.0 的实际封板范围与限制见 [版本记录](CHANGELOG.md)。尚未实现或目标未提供数据的能力必须显式报告，禁止模拟成功结果。
+当前 v0.2.0 已实现八个工具处理器、Python 分析内核、有界脱敏出口、固定 fixture 离线重放、基于官方 MCP Python SDK 的 STDIO 宿主与标准库只读 HTTP 连接器。`pyproject.toml` 已配置 hatchling 构建后端，运行依赖包含 `mcp` 2.x；尚无锁文件。离线及回环 fixture 测试不等同于生产连通、完整协议合规或真实 Boot 版本兼容；第三方客户端互操作仍需单独验收。下述完整产品要求仍是验收目标，v0.2.0 的实际封板范围与限制见 [版本记录](CHANGELOG.md)。尚未实现或目标未提供数据的能力必须显式报告，禁止模拟成功结果。
 
 产品以独立 Python CLI/Sidecar 运行，默认通过 MCP STDIO 为 Codex、Claude Code、Cursor、VS Code 提供本地优先、只读、安全默认的 Spring Boot 运行证据。目标可以是本地实例或开发者明确获权访问的实例。服务受控读取标准 Actuator、可选 OpenAPI 与迁移状态，执行确定性归一化、脱敏及诊断；模型负责解释结果，不参与权限决策。
 
@@ -167,7 +167,7 @@ Python 3.11/3.12/3.13 为初始 CI 矩阵。Boot 2.7 与选定的 3.x 小版本�
 
 ## 4. 目录结构与模块边界（Repository Structure）
 
-以下为完整产品布局目标。当前 `src/spring_runtime_mcp/` 已提供 models/adapters/analyzers、policy、transport、snapshots、八个 tools 处理器、replay、cli 与自实现 server；尚未接入官方 SDK。测试使用离线 fixtures，连接器集成只访问测试自行启动的回环 HTTP 服务；布局中的构建、示例应用等计划文件不能作为已实现证据。
+以下为完整产品布局目标。当前 `src/spring_runtime_mcp/` 已提供 models/adapters/analyzers、policy、transport、snapshots、八个 tools 处理器、replay、cli 与官方 SDK 宿主。测试使用离线 fixtures，连接器集成只访问测试自行启动的回环 HTTP 服务；布局中的构建、示例应用等计划文件不能作为已实现证据。
 
 ```text
 SPEC.md
@@ -247,7 +247,7 @@ PYTHONPATH=src uv run --offline --no-project --with jsonschema==4.25.1 python -m
 
 `tests/security` 通过 `node --test tests/security/redteam-audit.test.ts` 或相同的离线 pytest 命令执行五类攻击回归；[安全审计报告](docs/audits/security-redteam-2026-10-17.md)记录实际调用点和未实现边界。wire/cache 出口独立拒绝危险内容，隐藏标识不参与过滤探测；CLI 计算和退出期间均隔离第三方控制台输出。真实网络连接器的 DNS/peer/TLS/streaming 验收仍不可省略。
 
-`tests/conformance` 提供八个工具的独立契约正反例、三组多版本合成样本、故障注入及 2,500 Bean 分页回归；细分证据见 [离线契约测试指南](tests/conformance/README.md)。实际处理器绑定见 `tools/registry.py`，行为覆盖还包括 `tests/test_e2e_diagnostic_scenarios.py`，不能仅凭 Schema 或 golden fixtures 宣称功能通过。关联投影受全局数量预算保护，预算不足时保留已知事实并返回 partial/truncated。`tests/integration` 验证处理器、出口与回环 HTTP/STDIO 链路，禁止访问外部诊断目标。replay 只接受固定 scenario，不接受任意文件、URL 或请求头；它复用实际处理器并在输出前校验 outputSchema，stdout 仅写一行 JSON-RPC。真实实例、安全网络守卫和官方 SDK 集成仍须独立验收。
+`tests/conformance` 提供八个工具的独立契约正反例、三组多版本合成样本、故障注入及 2,500 Bean 分页回归；细分证据见 [离线契约测试指南](tests/conformance/README.md)。实际处理器绑定见 `tools/registry.py`，行为覆盖还包括 `tests/test_e2e_diagnostic_scenarios.py`，不能仅凭 Schema 或 golden fixtures 宣称功能通过。关联投影受全局数量预算保护，预算不足时保留已知事实并返回 partial/truncated。`tests/integration` 验证处理器、出口与回环 HTTP/STDIO 链路，禁止访问外部诊断目标。replay 只接受固定 scenario，不接受任意文件、URL 或请求头；它复用实际处理器并在输出前校验 outputSchema，stdout 仅写一行 JSON-RPC。真实实例与第三方客户端互操作仍须独立验收。
 
 ### 5.2 完整产品的计划入口
 

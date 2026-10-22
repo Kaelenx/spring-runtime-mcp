@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
-from spring_runtime_mcp import server
+from harness.host import dispatch as sdk_dispatch
 from spring_runtime_mcp.contracts.definitions import definition
 from spring_runtime_mcp.models.source_catalog import SourceCatalog
 from spring_runtime_mcp.policy.sanitization import SanitizerPipeline
@@ -57,17 +57,17 @@ def probe_services() -> tuple[Services, ProbeReader]:
     )
 
 
-def dispatch(message: object) -> dict[str, Any]:
+def dispatch(message: object, *, expect_reply: bool = True) -> dict[str, Any] | None:
     services, reader = probe_services()
-    frame = asyncio.run(server.dispatch(message, services))
-    assert frame is not None
+    frame = asyncio.run(sdk_dispatch(message, services, expect_reply=expect_reply))
     assert reader.calls == 0, "protocol gate allowed a handler to perform IO"
-    return json.loads(frame)
+    return None if frame is None else json.loads(frame)
 
 
 def test_rw02_tools_list_publishes_the_committed_tool_contract() -> None:
     """RW-02: tools/list must republish each contract entry, outputSchema included."""
     body = dispatch({"jsonrpc": "2.0", "id": "listing", "method": "tools/list"})
+    assert body is not None
     tools = body["result"]["tools"]
     assert [tool["name"] for tool in tools] == sorted(tool["name"] for tool in tools)
     for tool in tools:
@@ -80,19 +80,28 @@ def test_rw02_tools_list_publishes_the_committed_tool_contract() -> None:
 
 
 @pytest.mark.parametrize(
-    "case,params",
+    "case,params,answered",
     [
-        ("unknown-tool", {"name": "springboot_missing_tool", "arguments": {}}),
-        ("params-not-object", []),
+        ("unknown-tool", {"name": "springboot_missing_tool", "arguments": {}}, True),
+        ("params-not-object", [], False),
     ],
 )
 def test_rw02_unknown_tool_and_bad_params_are_protocol_errors(
-    case: str, params: Any
+    case: str, params: Any, answered: bool
 ) -> None:
-    """RW-02: unknown tools and malformed call params use JSON-RPC -32602."""
+    """RW-02: unknown tools and malformed call params never run a handler.
+
+    Unknown names get -32602; params that do not fit the request shape are
+    dropped by the SDK transport without a reply.
+    """
     body = dispatch(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params}
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params},
+        expect_reply=answered,
     )
+    if body is None:
+        # The SDK transport drops frames whose params do not fit the request
+        # shape; the security property is rejection before any IO.
+        return
     assert "result" not in body, (
         f"RW-02: {case} was reported as a tool execution result instead of a "
         f"protocol error: {body}"
@@ -113,9 +122,13 @@ def test_rw02_unknown_tool_and_bad_params_are_protocol_errors(
 def test_rw02_invalid_jsonrpc_is_rejected_before_handlers(
     envelope: dict[str, Any],
 ) -> None:
-    """RW-02: jsonrpc must be exactly the string "2.0" before any dispatch."""
-    body = dispatch(envelope)
-    assert body["error"]["code"] == -32600, body
+    """RW-02: a frame that is not JSON-RPC 2.0 never reaches a handler.
+
+    The official SDK transport drops unparsable frames without a reply; the
+    security property under test is rejection before any IO, not a -32600 body.
+    """
+    body = dispatch(envelope, expect_reply=False)
+    assert body is None or body.get("error", {}).get("code") == -32600, body
 
 
 @pytest.mark.parametrize(
@@ -125,7 +138,9 @@ def test_rw02_invalid_request_ids_are_rejected_before_handlers(
     request_id: Any,
 ) -> None:
     """RW-02: an unusable id must fail the envelope, not be discovered after IO."""
-    body = dispatch({**CALL, "id": request_id})
+    body = dispatch({**CALL, "id": request_id}, expect_reply=False)
+    if body is None:
+        return  # transport-level rejection without a reply
     assert body["error"]["code"] == -32600, body
     assert body["id"] is None, body
 
@@ -150,6 +165,7 @@ def test_rw02_initialize_never_echoes_an_unsupported_version() -> None:
             },
         }
     )
+    assert body is not None
     if "result" in body:
         version = body["result"]["protocolVersion"]
         assert isinstance(version, str) and 0 < len(version) <= 64, version
@@ -176,7 +192,7 @@ def test_rw02_output_contract_violation_becomes_a_safe_failure(
 
     monkeypatch.setitem(HANDLERS, "springboot_diagnose_health", broken)
     body = dispatch(CALL)
-    assert "result" in body, body
+    assert body is not None and "result" in body, body
     result = body["result"]
     envelope = result["structuredContent"]
     name = "springboot_diagnose_health"

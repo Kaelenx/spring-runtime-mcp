@@ -49,7 +49,7 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). No JDK, Docker, mode
 
 ```bash
 git clone https://github.com/Kaelenx/spring-runtime-mcp.git && cd spring-runtime-mcp
-uv run --no-project --with pytest==8.4.2 --with jsonschema==4.25.1 python -m pytest -q
+uv run --no-project --with pytest==8.4.2 --with jsonschema==4.25.1 --with mcp python -m pytest -q
 PYTHONPATH=src uv run --no-project --with jsonschema==4.25.1 python -m spring_runtime_mcp.replay \
   --scenario stripe-missing --tool springboot_inspect_beans \
   --arguments-json '{"typePattern":"example.PaymentGateway","contextId":"application","conditionDepth":4}'
@@ -200,7 +200,7 @@ v0.1.0 is a working local MVP, not a validated product. What the test suite prov
 
 - 729 offline tests, strict `mypy`, `ruff`, an AST-based red-team suite (only one module may import `http.client`/`socket`; no `print`, `eval`, `subprocess`, write verbs or raw socket sends anywhere in production code) and an independent JSON Schema contract validator all pass. Fixtures are **synthetic** Boot 2.7 / 3.x / 4.x and MVC / WebFlux shapes; HTTP integration tests talk only to a loopback fixture server started by the test itself.
 - No real Spring Boot version matrix has been accepted yet. Do not read "fixtures pass" as "supports every Boot version".
-- The stdio host is a self-implemented JSON-RPC loop, not yet the official MCP Python SDK. It handles `initialize`, `tools/list` and `tools/call`, and the installed console script completes a handshake over stdio, but full protocol conformance and third-party client interoperability are not claimed. Migrating to the SDK is the next milestone.
+- The stdio host is built on the official `mcp` Python SDK (v2, lowlevel `Server`), which owns handshake negotiation, initialization gating, JSON-RPC error mapping and cancellation. The rest of the stack — tool descriptors, output-contract validation, sanitization and the 16 KiB budget — is still this project's. Third-party client interoperability beyond a scripted stdio handshake is not yet claimed.
 - Targets are loopback-only. Remote HTTPS targets, credential binding (Basic/Bearer from env vars), custom management base paths and `/v3/api-docs` fallback are specified in [SPEC.md](SPEC.md) but not implemented.
 - Configuration diagnostics (`env`/`configprops`) are off by default on both sides and require explicit registration of allowed prefixes when enabled.
 
@@ -209,8 +209,8 @@ The full list, with the exact commands and counts behind each claim, is in [CHAN
 ## Development
 
 ```bash
-uv run --no-project --with pytest==8.4.2 --with jsonschema==4.25.1 python -m pytest -q
-uv run --no-project --with mypy==1.18.2 --with jsonschema==4.25.1 python -m mypy src/spring_runtime_mcp
+uv run --no-project --with pytest==8.4.2 --with jsonschema==4.25.1 --with mcp python -m pytest -q
+uv run --no-project --with mypy==1.18.2 --with jsonschema==4.25.1 --with mcp python -m mypy src/spring_runtime_mcp
 uv run --no-project --with jsonschema==4.25.1 python scripts/validate_tool_contract.py
 uv run --no-project --with ruff==0.14.1 ruff check src tests scripts
 uv run --no-project --with ruff==0.14.1 ruff format --check src tests scripts

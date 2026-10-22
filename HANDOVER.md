@@ -12,7 +12,7 @@ stdio 客户端
     ▼
 cli.py                         解析 --base-url / --target-id / --timeout，不接受工具参数里的 URL
     ▼
-server.py                      initialize、tools/list、tools/call；stdout 只写 JSON-RPC
+server.py                      官方 mcp SDK lowlevel Server；注册 on_list_tools/on_call_tool，stdout 只写 JSON-RPC
     ▼
 tools/registry.py              八个名字按字母序绑定 HANDLERS；未知名字 → UNKNOWN_TOOL
     ▼
@@ -34,7 +34,7 @@ transport/responses.py         structuredContent 与一份文本副本，整帧 
 | 你要改的事情 | 先打开 |
 | --- | --- |
 | 启动参数、环境变量 | `src/spring_runtime_mcp/cli.py` |
-| MCP 方法与 isError | `server.py`、`transport/responses.py` |
+| MCP 宿主、SDK 回调与 isError | `server.py`、`transport/responses.py` |
 | 工具有没有实现 | `tools/registry.py` 的 `HANDLERS` |
 | 某个工具的读端点顺序和失败是否整单失败 | 对应 `tools/*.py` |
 | Actuator 形状差异 | 对应 `adapters/*.py` |
@@ -101,7 +101,7 @@ transport/responses.py         structuredContent 与一份文本副本，整帧 
 仓库根目录、Python 3.11+。下面这条不安装控制台脚本，使用已缓存的 `jsonschema`：
 
 ```bash
-PYTHONPATH=src uv run --offline --no-project --with jsonschema==4.25.1 \
+PYTHONPATH=src uv run --offline --no-project --with jsonschema==4.25.1 --with mcp \
   python -m spring_runtime_mcp.cli --base-url http://127.0.0.1:18081
 ```
 

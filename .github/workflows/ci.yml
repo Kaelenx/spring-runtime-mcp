@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Offline fixture tests
-        run: uv run --no-project --with pytest==8.4.2 --with jsonschema==4.25.1 python -m pytest -q
+        run: uv run --no-project --with pytest==8.4.2 --with jsonschema==4.25.1 --with mcp python -m pytest -q
       - name: Tool contract validation
         run: uv run --no-project --with jsonschema==4.25.1 python scripts/validate_tool_contract.py
 
@@ -34,7 +34,7 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.1
         with:
           python-version: "3.12"
-      - run: uv run --no-project --with mypy==1.18.2 --with jsonschema==4.25.1 python -m mypy src/spring_runtime_mcp
+      - run: uv run --no-project --with mypy==1.18.2 --with jsonschema==4.25.1 --with mcp python -m mypy src/spring_runtime_mcp
       - run: uv run --no-project --with ruff==0.14.1 ruff check src tests scripts
       - run: uv run --no-project --with ruff==0.14.1 ruff format --check src tests scripts
 

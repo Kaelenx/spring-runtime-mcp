@@ -108,12 +108,17 @@ def test_readonly_static_inventory_has_one_request_constructor_and_no_execution_
         "urllib.request",
         "urllib3",
         "subprocess",
+        # The official MCP SDK owns the stdio transport; it must never appear
+        # inside the analysis layers, only at the host boundary it serves.
+        "mcp",
     }
 
     def blocked(module: str | None, relative: str) -> bool:
         # The one production connector resolves a numeric address and verifies
         # the real peer before any HTTP write, so it alone may import socket
         # and http.client. Every other network stack stays banned.
+        if relative in {"server.py", "cli.py"} and module in {"mcp", "mcp_types"}:
+            return False
         if relative == "transport/actuator_http.py" and module in {
             "http.client",
             "socket",

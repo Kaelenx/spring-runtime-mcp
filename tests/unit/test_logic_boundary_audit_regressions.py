@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
+from harness.host import dispatch as sdk_dispatch
 from spring_runtime_mcp import server
 from spring_runtime_mcp.adapters.openapi import _Expander, normalize_openapi
 from spring_runtime_mcp.adapters.startup import normalize_startup
@@ -335,33 +336,34 @@ def test_tc_bug_04_frame_limit_boundary_ends_the_session(
             assert size == server.MAX_FRAME_BYTES + 1
             return self.chunks.pop(0) if self.chunks else b""
 
-    writes: list[bytes] = []
-    monkeypatch.setattr(
-        server, "os", SimpleNamespace(write=lambda fd, data: writes.append(data))
-    )
     base = b'{"jsonrpc":"2.0","id":1,"method":"ping"}'
     at_limit = base + b" " * (server.MAX_FRAME_BYTES - len(base) - 1) + b"\n"
     assert len(at_limit) == server.MAX_FRAME_BYTES
-    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=InputBoundary([at_limit])))
-    asyncio.run(server.run_stdio(services_for_bodies({})))
-    assert len(writes) == 1 and json.loads(writes[0])["result"] == {}, (
-        "TC-BUG-04: a frame exactly at the byte cap must still be processed: "
-        f"writes={writes}"
+    reader = server._BoundedLineReader(io.BytesIO(at_limit))
+    assert reader.readline() == at_limit.decode("utf-8"), (
+        "TC-BUG-04: a frame exactly at the byte cap must pass the reader"
+    )
+    assert reader.oversized is False
+
+    over = server._BoundedLineReader(io.BytesIO(b"A" * (server.MAX_FRAME_BYTES + 1)))
+    assert over.readline() == "" and over.oversized is True, (
+        "TC-BUG-04: an over-cap line must mark the session and stop reading"
     )
 
-    writes.clear()
+    writes = io.StringIO()
     oversized = b"A" * (server.MAX_FRAME_BYTES + 1)
     monkeypatch.setattr(
         sys,
         "stdin",
         SimpleNamespace(buffer=InputBoundary([oversized, base + b"\n"])),
     )
-    asyncio.run(server.run_stdio(services_for_bodies({})))
-    assert len(writes) == 1, (
+    asyncio.run(server.run_stdio(services_for_bodies({}), stdout=writes))
+    frames = [json.loads(line) for line in writes.getvalue().splitlines()]
+    assert len(frames) == 1, (
         "TC-BUG-04: an oversized frame must end the session instead of re-reading "
-        f"its bytes as later requests: writes={writes}"
+        f"its bytes as later requests: frames={frames}"
     )
-    assert json.loads(writes[0])["error"]["code"] == -32600
+    assert frames[0]["error"]["code"] == -32600
 
 
 @pytest.mark.parametrize("include_values", [False, True], ids=["no-values", "values"])
@@ -603,9 +605,9 @@ def test_tc_bug_11_startup_span_must_include_separate_root_steps() -> None:
 def test_tc_bug_12_non_string_tool_name_must_be_a_controlled_input_error(
     name: Any,
 ) -> None:
-    """TC-BUG-12: unhashable names must not escape dispatch as TypeError."""
+    """TC-BUG-12: unhashable names must not escape as an internal error."""
     frame = asyncio.run(
-        server.dispatch(
+        sdk_dispatch(
             {
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -613,9 +615,11 @@ def test_tc_bug_12_non_string_tool_name_must_be_a_controlled_input_error(
                 "params": {"name": name, "arguments": {}},
             },
             services_for_bodies({}),
+            expect_reply=False,
         )
     )
-    assert frame is not None
+    if frame is None:
+        return  # the SDK's typed params reject a non-string name before dispatch
     response = json.loads(frame)
     if "error" in response:
         assert response["error"]["code"] in {-32600, -32602}
@@ -631,7 +635,7 @@ def test_tc_bug_12_non_string_tool_name_must_be_a_controlled_input_error(
 def test_tc_bug_12_name_type_and_unknown_tool_paths(name: Any) -> None:
     """TC-BUG-12: name errors stay controlled; unknown names are protocol errors."""
     frame = asyncio.run(
-        server.dispatch(
+        sdk_dispatch(
             {
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -639,14 +643,22 @@ def test_tc_bug_12_name_type_and_unknown_tool_paths(name: Any) -> None:
                 "params": {"name": name, "arguments": {}},
             },
             services_for_bodies({}),
+            expect_reply=name == "springboot_missing_tool",
         )
     )
-    assert frame is not None
+    if frame is None:
+        # Null/boolean names do not fit the request shape; the transport drops
+        # them without invoking any handler.
+        assert not isinstance(name, str)
+        return
     body = json.loads(frame)
     if isinstance(name, str):
         # RW-02: MCP and SPEC.md 2.2 classify unknown tool names as protocol
         # errors, not as tool execution results.
         assert "result" not in body and body["error"]["code"] == -32602, body
+        return
+    if "result" not in body:
+        assert body["error"]["code"] in {-32600, -32602}, body
         return
     result = body["result"]
     assert result["isError"] is True

@@ -214,8 +214,8 @@ Claude Code 在工作区根目录使用 `.mcp.json`，配置如下；用 `claude
 ## 开发与验证
 
 ```bash
-uv run --offline --no-project --with pytest==8.4.2 --with jsonschema==4.25.1 python -m pytest -q
-uv run --offline --no-project --with mypy==1.18.2 --with jsonschema==4.25.1 python -m mypy src/spring_runtime_mcp
+uv run --offline --no-project --with pytest==8.4.2 --with jsonschema==4.25.1 --with mcp python -m pytest -q
+uv run --offline --no-project --with mypy==1.18.2 --with jsonschema==4.25.1 --with mcp python -m mypy src/spring_runtime_mcp
 uv run --offline --no-project --with jsonschema==4.25.1 python scripts/validate_tool_contract.py
 uv run --offline --no-project --with ruff==0.14.1 ruff check src tests scripts
 uv run --offline --no-project --with ruff==0.14.1 ruff format --check src tests scripts

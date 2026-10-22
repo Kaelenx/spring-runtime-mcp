@@ -7,7 +7,7 @@ import json
 from typing import Any
 
 from spring_runtime_mcp.replay import FixtureReader, services_for
-from spring_runtime_mcp.server import dispatch
+from harness.host import dispatch
 from spring_runtime_mcp.tools.inspect_beans import Services
 
 

@@ -1,10 +1,18 @@
 # 版本记录
 
-## Unreleased
+## v0.2.0 — 2026-10-22
 
 - 关闭 2026-10-18 逻辑与边界审计的 TC-BUG-01 至 15；连接器增加数字地址固定与 peer 校验，安全静态清单仅对 `transport/actuator_http.py` 放行 `socket`/`http.client` 导入并新增禁止原始套接字写入。全量 729 passed。
 - 工具契约 JSON 移至 `src/spring_runtime_mcp/schemas/`，通过 `importlib.resources` 加载，随 wheel 分发。
 - 增加 hatchling 构建后端、Apache-2.0 许可证、英文 README、`SECURITY.md` 与 GitHub Actions CI（Python 3.11–3.14 测试、mypy/ruff、wheel 构建及干净环境 stdio 握手）。`uv build` 产物已在隔离虚拟环境安装并完成 `initialize`/`tools/list`。
+- STDIO 宿主迁移到官方 `mcp` Python SDK 2.x 的 lowlevel `Server`，新增运行依赖 `mcp>=2.3,<3`。握手协商、初始化门禁、JSON-RPC 错误映射与取消由 SDK 负责；工具描述符、outputSchema 校验、脱敏与 16 KiB 预算是本项目逻辑。
+- 协议行为变化，客户端可能感知：
+  - `initialize` 之前只接受 `ping`；提前的 `tools/*` 返回 JSON-RPC `-32602`。
+  - 未知工具返回 `-32602`（此前为 `-32600` 或失败信封）。
+  - 不支持握手版本（如 `2026-07-28`）协商到 SDK 的最新 handshake 版本 `2025-11-25`，不回显请求版本。
+  - 传输层无法解析的帧（非法 JSON、`jsonrpc` 非 `"2.0"`、非字符串/布尔/浮点 id、`params` 非对象）被直接丢弃而不回应；原有“不触达处理器、零 IO”的安全性质由 SDK 解析边界保证，对应测试改为断言该性质。
+  - 16 KiB 预算现在包含 2026-era 响应的 `io.modelcontextprotocol/serverInfo` `_meta` 戳。
+- 安全静态清单把 `mcp`/`mcp_types` 的导入范围限制在 `server.py` 与 `cli.py`；`transport/stdio.py` 仍只服务重放 CLI。
 
 ## v0.1.0 — 2026-10-17
 

@@ -11,7 +11,9 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
-from spring_runtime_mcp.server import build_services, dispatch
+from spring_runtime_mcp.server import build_services
+
+from harness.host import dispatch
 from spring_runtime_mcp.tools.inspect_beans import Services
 from spring_runtime_mcp.policy.configuration import ConfigReadPolicy
 

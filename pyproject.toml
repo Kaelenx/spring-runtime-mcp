@@ -1,12 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
 [project]
 name = "spring-runtime-mcp"
 version = "0.1.0"
-description = "Read-only Spring Boot runtime diagnostics for local MCP clients."
+description = "Read-only, sanitized Spring Boot runtime diagnostics for coding agents over MCP."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
+authors = [{ name = "Kaelenx" }]
+keywords = ["mcp", "model-context-protocol", "spring-boot", "actuator", "diagnostics", "openapi"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Debuggers",
+  "Topic :: System :: Monitoring",
+  "Typing :: Typed",
+]
 dependencies = ["jsonschema==4.25.1"]
+
+[project.urls]
+Homepage = "https://github.com/Kaelenx/spring-runtime-mcp"
+Repository = "https://github.com/Kaelenx/spring-runtime-mcp"
+Issues = "https://github.com/Kaelenx/spring-runtime-mcp/issues"
+Changelog = "https://github.com/Kaelenx/spring-runtime-mcp/blob/master/CHANGELOG.md"
 
 [project.scripts]
 spring-runtime-mcp = "spring_runtime_mcp.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/spring_runtime_mcp"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "scripts", "docs", "*.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

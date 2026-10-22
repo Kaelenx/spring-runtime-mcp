@@ -1,6 +1,6 @@
 # 工具调用策略与统一错误契约
 
-契约版本 2；协议目标为 MCP 2026-07-28。完整定义位于 [tools-contract.json](../../src/schemas/tools-contract.json)。文件是包含八个 Tool 定义的本地发布包，不是整个文件都作为 JSON Schema，也不是完整 JSON-RPC 响应。服务端将 `tools` 数组原样放入 `tools/list` 的结果；包级 contractVersion/protocolVersion 不发送为 Tool 字段。
+契约版本 2；协议目标为 MCP 2026-07-28。完整定义位于 [tools-contract.json](../../src/spring_runtime_mcp/schemas/tools-contract.json)。文件是包含八个 Tool 定义的本地发布包，不是整个文件都作为 JSON Schema，也不是完整 JSON-RPC 响应。服务端将 `tools` 数组原样放入 `tools/list` 的结果；包级 contractVersion/protocolVersion 不发送为 Tool 字段。
 
 ## 发布、排序与兼容
 

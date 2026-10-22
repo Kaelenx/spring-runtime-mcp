@@ -1,1 +1,1 @@
-"""Internal models; public contracts live in src/schemas."""
+"""Internal models; public contracts live in spring_runtime_mcp/schemas."""

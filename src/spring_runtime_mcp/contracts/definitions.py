@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from datetime import datetime
 from functools import lru_cache
-from pathlib import Path
+from importlib.resources import files
 from typing import Any, Literal, cast, overload
 
 from ..models.common import NormalizationError
@@ -33,8 +33,8 @@ TOOL = "springboot_inspect_beans"
 
 @lru_cache(maxsize=1)
 def _definitions() -> tuple[dict[str, Any], ...]:
-    path = Path(__file__).resolve().parents[2] / "schemas/tools-contract.json"
-    bundle = json.loads(path.read_text(encoding="utf-8"))
+    resource = files("spring_runtime_mcp").joinpath("schemas/tools-contract.json")
+    bundle = json.loads(resource.read_text(encoding="utf-8"))
     definitions = tuple(bundle["tools"])
     if len(definitions) != 8 or [d["name"] for d in definitions] != sorted(
         d["name"] for d in definitions

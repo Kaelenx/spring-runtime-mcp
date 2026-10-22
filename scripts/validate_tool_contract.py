@@ -95,7 +95,9 @@ def rejects(validator: Draft202012Validator, value: object) -> None:
 
 
 def main() -> None:
-    bundle = json.loads((ROOT / "src/schemas/tools-contract.json").read_text())
+    bundle = json.loads(
+        (ROOT / "src/spring_runtime_mcp/schemas/tools-contract.json").read_text()
+    )
     assert bundle["contractVersion"] == "2"
     assert bundle["protocolVersion"] == "2026-07-28"
     tools = bundle["tools"]

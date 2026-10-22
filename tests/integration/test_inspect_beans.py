@@ -19,7 +19,9 @@ from spring_runtime_mcp.tools.inspect_beans import Services, inspect_beans
 from spring_runtime_mcp.transport.responses import serialize_response
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTRACT = json.loads((ROOT / "src/schemas/tools-contract.json").read_text())
+CONTRACT = json.loads(
+    (ROOT / "src/spring_runtime_mcp/schemas/tools-contract.json").read_text()
+)
 SCHEMA = next(
     tool["outputSchema"]
     for tool in CONTRACT["tools"]

@@ -42,7 +42,7 @@ transport/responses.py         structuredContent 与一份文本副本，整帧 
 | 条件三值与阻塞链 | `analyzers/condition_failures.py` |
 | 允许的逻辑端点与 HTTP 状态映射 | `transport/response_gate.py` 的 `ENDPOINTS` |
 | 真实路径 `/actuator/...` | `transport/actuator_http.py` 的 `_PATHS` |
-| 公开参数与输出字段 | `src/schemas/tools-contract.json` |
+| 公开参数与输出字段 | `src/spring_runtime_mcp/schemas/tools-contract.json` |
 | 参数默认值何时生效 | `contracts/definitions.py` 的 `validate_arguments` |
 | 脱敏键、标识符正则 | `policy/sanitization.py` |
 | 带空格的句子能否出站 | `policy/output_guard.py` 的 `LOCAL_PROSE` |

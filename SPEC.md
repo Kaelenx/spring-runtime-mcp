@@ -2,7 +2,7 @@
 
 ## 1. 目标愿景与全局非目标（Objective & Non-Goals）
 
-**规范版本：0.7。** 本文是产品范围、工具契约、默认值、验收要求和编码 Agent 权限的唯一事实来源。发生冲突时，以本文的具体规格为准；[ADR 0001](docs/adr/0001-positioning-and-non-goals.md)保留架构决策依据，[安全架构规格书](docs/architecture/security-and-sanitization.md)细化网络守卫、只读策略与脱敏机制，[跨版本归一化设计](docs/architecture/cross-version-normalization.md)定义源诊断域、关系解析及自愈配方，[工具契约](src/schemas/tools-contract.json)及其[调用策略](docs/contracts/tool-calling-policy.md)固定八个公开工具；[项目计划](Spring-Boot-Safe-Runtime-MCP-Project-Plan.md)作为历史背景。变更公开契约必须同步本文、Schema、fixture 和相关架构文档。
+**规范版本：0.7。** 本文是产品范围、工具契约、默认值、验收要求和编码 Agent 权限的唯一事实来源。发生冲突时，以本文的具体规格为准；[ADR 0001](docs/adr/0001-positioning-and-non-goals.md)保留架构决策依据，[安全架构规格书](docs/architecture/security-and-sanitization.md)细化网络守卫、只读策略与脱敏机制，[跨版本归一化设计](docs/architecture/cross-version-normalization.md)定义源诊断域、关系解析及自愈配方，[工具契约](src/spring_runtime_mcp/schemas/tools-contract.json)及其[调用策略](docs/contracts/tool-calling-policy.md)固定八个公开工具；[项目计划](Spring-Boot-Safe-Runtime-MCP-Project-Plan.md)作为历史背景。变更公开契约必须同步本文、Schema、fixture 和相关架构文档。
 
 当前 v0.1.0 已实现八个工具处理器、Python 分析内核、有界脱敏出口、固定 fixture 离线重放、自实现 STDIO MCP 宿主与标准库只读 HTTP 连接器。`pyproject.toml` 登记版本、运行依赖和 CLI 脚本，尚未配置显式构建后端或锁文件，也未接入官方 MCP Python SDK。离线及回环 fixture 测试不等同于生产连通、完整协议合规或真实 Boot 版本兼容；DNS 全组校验、数字 IP 固定建连及实际 peer IP 比对仍未实现。下述完整产品要求仍是验收目标，v0.1.0 的实际封板范围与限制见 [版本记录](CHANGELOG.md)。尚未实现或目标未提供数据的能力必须显式报告，禁止模拟成功结果。
 
@@ -44,7 +44,7 @@
 
 ### 2.2 全局输入、响应与预算契约
 
-MCP 公共 JSON 字段统一使用 camelCase，Python 内部使用 snake_case。八个工具的精确输入/输出以 [tools-contract.json](src/schemas/tools-contract.json)版本 2 为准；本次替换早期九工具定义，不保留旧名称别名。所有工具接受 targetId、maxResults、cursor；目标只能来自本地登记。入站协议帧最多 64 KiB，工具参数整体最多 16 KiB，request id 最多 128 UTF-8 字节；普通标识符最多 256 字符、路径最多 1,024 字符、游标最多 2,048 字符。未知字段、错误类型和越界数字在联网前拒绝。Schema default 由服务端显式应用。
+MCP 公共 JSON 字段统一使用 camelCase，Python 内部使用 snake_case。八个工具的精确输入/输出以 [tools-contract.json](src/spring_runtime_mcp/schemas/tools-contract.json)版本 2 为准；本次替换早期九工具定义，不保留旧名称别名。所有工具接受 targetId、maxResults、cursor；目标只能来自本地登记。入站协议帧最多 64 KiB，工具参数整体最多 16 KiB，request id 最多 128 UTF-8 字节；普通标识符最多 256 字符、路径最多 1,024 字符、游标最多 2,048 字符。未知字段、错误类型和越界数字在联网前拒绝。Schema default 由服务端显式应用。
 
 | 参数或限制 | 固定规则 |
 | --- | --- |
@@ -206,7 +206,7 @@ src/spring_runtime_mcp/
     pagination.py
     serialization.py
   snapshots.py               # 有界内存快照与游标
-src/schemas/tools-contract.json # 八个可独立提取的 inputSchema/outputSchema
+  schemas/tools-contract.json # 八个可独立提取的 inputSchema/outputSchema，随 wheel 分发
 scripts/export_contracts.py  # --check / --write
 tests/
   unit/
@@ -263,7 +263,7 @@ PYTHONPATH=src uv run --offline --no-project --with jsonschema==4.25.1 python -m
 | `uv run mypy src scripts` | 执行类型检查。 |
 | `uv run pytest -q` | 默认仅运行 unit、security、contracts；必须在无目标服务、无凭据的环境通过。 |
 | `uv run pytest -q tests/contracts` | 验证八个工具 Schema、错误契约、16KB 预算、分页与重放。 |
-| `uv run python scripts/export_contracts.py --check` | 将内存生成结果与 `src/schemas/tools-contract.json` 比较；漂移时非零退出，不写文件。 |
+| `uv run python scripts/export_contracts.py --check` | 将内存生成结果与 `src/spring_runtime_mcp/schemas/tools-contract.json` 比较；漂移时非零退出，不写文件。 |
 | `uv run python scripts/export_contracts.py --write` | 明确更新公开 Schema；必须连同规格与兼容性变更审阅。 |
 | `uv build` | 构建 wheel 和 sdist；不能以打包成功替代契约测试。 |
 | `uv run spring-runtime-mcp --help` | 验证 CLI 入口，不联网。 |
